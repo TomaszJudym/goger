@@ -1,0 +1,9 @@
+version: '3'
+services:
+  gog-gamer:
+    build:
+      context: .
+    container_name: gog-gamer
+    mem_limit: 2g
+    cpus: 4
+    shm_size: 2g
