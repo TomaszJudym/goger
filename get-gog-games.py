@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver import Chrome
 from selenium.webdriver.common.by import By
 from typing import List
+from pg import Repo
 import concurrent.futures
 import time
 from threading import Lock
@@ -93,7 +94,7 @@ def new_chrome_driver() -> Chrome:
     options.add_argument('--no-sandbox')
     options.add_argument("--incognito")
     options.add_argument("--headless")
-    options.add_argument('--disable-dev-shm-usage')
+#    options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument("--disable-setuid-sandbox")
     options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
@@ -102,10 +103,11 @@ def new_chrome_driver() -> Chrome:
     return driver
 
 
-def scrap_game_links(driver: Chrome, page_from: int, page_to: int, to: FileWrapper) -> int:
+def scrap_game_links(driver: Chrome, page_from: int, page_to: int,
+     to: FileWrapper, repo: Repo) -> int:
     fetched = 0
-    total = page_to - page_from
-    i = 1
+    total = page_to - page_from + 1
+    i = 0
     while page_from <= page_to:
         # Get links from first page and check how many pages there's in total.
         game_hrefs = retry(lambda: get_games_links(driver, page_from), 10)
@@ -116,27 +118,42 @@ def scrap_game_links(driver: Chrome, page_from: int, page_to: int, to: FileWrapp
         got = len(game_hrefs)
         fetched += got
         to.write(game_hrefs)
+        for href in game_hrefs:
+            repo.insert_game_link(href.rsplit('/', 1)[-1], href)
         page_from += 1
-        print(f"Fetched {got} new links, going to page {page_from} {i}/{total}")
         i += 1
+        print(f"Fetched {got} new links, going to page {page_from} {i}/{total}")
 
     driver.quit()
     return fetched
-    
+
 
 def generate_ranges(start, end, num_ranges):
-    range_size = (end - start + 1) // num_ranges
+    range_size = (end - start) // num_ranges
     ranges = []
+    remainder = (end - start) % num_ranges
+    next_start = start
 
-    for i in range(start, end, range_size):
-        range_start = i
-        range_end = min(i + range_size - 1, end)
+    for i in range(num_ranges):
+        range_start = next_start
+        if remainder > 0:
+            next_start += range_size + 1
+            remainder -= 1
+        else:
+            next_start += range_size
+        range_end = min(next_start - 1, end)
         ranges.append([range_start, range_end])
 
     return ranges
 
 
 def main():
+    repo = Repo()
+    repo.ping()
+    print("Pinged repo successfully")
+    repo.clear("game_links")
+    repo.clear("reviews")
+
     driver = new_chrome_driver()
     links_file = "gog_games_hrefs.txt"
     total = 0
@@ -170,13 +187,14 @@ def main():
         futures = []
         # Got 1 driver from fetching first page. Run it as first worker and then
         # spawn remaining workers with new drivers.
+        print(f"Running worker 0 with range {ranges[0][0]} - {ranges[0][1]}")
         futures.append(executor.submit(scrap_game_links,
-                        new_chrome_driver(), ranges[0][0], ranges[0][1], f))
+                        new_chrome_driver(), ranges[0][0], ranges[0][1], f, repo))
 
         for i, r in enumerate(ranges[1:]):
             print(f"Running worker {i} with range {r[0]} - {r[1]}")
             futures.append(executor.submit(scrap_game_links,
-                            new_chrome_driver(), r[0], r[1], f))
+                            new_chrome_driver(), r[0], r[1], f, repo))
 
     # Collect the results when all tasks are completed
     total = []

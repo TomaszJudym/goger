@@ -7,3 +7,29 @@ services:
     mem_limit: 2g
     cpus: 4
     shm_size: 2g
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: goger
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    depends_on:
+      - postgres  # Make sure PostgreSQL starts before gog-gamer
+    networks:
+      - app-network
+  postgres:
+     image: postgres:16.0-alpine3.18
+     container_name: postgres
+     environment:
+       POSTGRES_DB: goger
+       POSTGRES_USER: postgres
+       POSTGRES_PASSWORD: postgres
+     volumes:
+       - ./pg-data:/var/lib/postgresql/data  # Mount volume for PostgreSQL data
+     networks:
+       - app-network
+
+networks:
+  app-network:  # Define a user-defined network for the services to communicate
+
+
