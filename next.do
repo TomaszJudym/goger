@@ -50,3 +50,7 @@ On error backoff and try to fetch less up to as little as 10.
 For some reason {formatter} in urls works with:
 product_card_v2_mobile_slider_639
 Found on cyberpunk phantom liberty store page.
+
+##########################################
+
+Finish model for reviews. Go and pg

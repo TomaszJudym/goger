@@ -218,7 +218,7 @@ type Content struct {
 	Language    string `json:"language"`
 }
 
-type AvatarLinks struct {
+type Links struct {
 	GogImageID string `json:"gog_image_id"`
 	Small      string `json:"small"`
 	Small2X    string `json:"small_2x"`
@@ -236,26 +236,32 @@ type AvatarLinks struct {
 }
 
 type Avatar struct {
-	Links AvatarLinks `json:"links"`
+	Links Links `json:"links"`
 }
-
 type Counters struct {
 	Games   int `json:"games"`
 	Reviews int `json:"reviews"`
 }
-
 type Reviewer struct {
 	ID       string   `json:"id"`
 	Username string   `json:"username"`
 	Avatar   Avatar   `json:"avatar"`
 	Counters Counters `json:"counters"`
 }
-
 type Votes struct {
 	Downvotes int `json:"downvotes"`
 	Upvotes   int `json:"upvotes"`
 }
-
+type Vote struct {
+	Href string `json:"href"`
+}
+type Report struct {
+	Href string `json:"href"`
+}
+type Links struct {
+	Vote   Vote   `json:"vote"`
+	Report Report `json:"report"`
+}
 type MostHelpful struct {
 	ID                 string    `json:"id"`
 	ProductID          string    `json:"productId"`
@@ -267,31 +273,30 @@ type MostHelpful struct {
 	Date               time.Time `json:"date"`
 	CreationDate       time.Time `json:"creationDate"`
 	InternalUpdateDate string    `json:"internalUpdateDate"`
+	Links              Links     `json:"_links"`
 }
-
 type First struct {
 	Href string `json:"href"`
 }
-
 type Last struct {
 	Href string `json:"href"`
 }
-
 type Next struct {
 	Href string `json:"href"`
 }
-
 type Previous struct {
 	Href string `json:"href"`
 }
-
 type Links struct {
 	First    First    `json:"first"`
 	Last     Last     `json:"last"`
 	Next     Next     `json:"next"`
 	Previous Previous `json:"previous"`
 }
-
+type Links struct {
+	Vote   Vote   `json:"vote"`
+	Report Report `json:"report"`
+}
 type Items struct {
 	ID                 string    `json:"id"`
 	ProductID          string    `json:"productId"`
@@ -305,7 +310,6 @@ type Items struct {
 	InternalUpdateDate string    `json:"internalUpdateDate"`
 	Links              Links     `json:"_links"`
 }
-
 type Embedded struct {
 	Items []Items `json:"items"`
 }
