@@ -1,0 +1,37 @@
+version: '3'
+services:
+  postgres:
+    image: postgres:latest
+    container_name: pg
+    environment:
+      PGUSER: goger # for pg_isready
+      POSTGRES_DB: goger
+      POSTGRES_USER: goger
+      POSTGRES_PASSWORD: goger
+    volumes:
+# For testing let's run in memory
+#      - ./postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - goger-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-U", "root", "-d", "goger"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 10s 
+
+  goger-app:
+    build: .
+    container_name: fetcher
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - goger-network
+
+networks:
+  goger-network:
+    driver: bridge
