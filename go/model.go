@@ -89,7 +89,16 @@ type ProductRepo struct {
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
 func (p Product) toRepo() (ProductRepo, error) {
-	// TODO: Move logic to sanitize() method
+	// Prices can arrive empty for some reason
+	if p.Price.Final == "" {
+		p.Price.Final = "0.0"
+	}
+	if p.Price.Base == "" {
+		p.Price.Base = "0.0"
+	}
+	if p.Price.FinalMoney.Discount == "" {
+		p.Price.FinalMoney.Discount = "0.0"
+	}
 	// Prices can have currency ($) string in them.
 	// Extract pure float from them.
 	priceFinal, err := extractFloat(p.Price.Final)

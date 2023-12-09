@@ -10,7 +10,6 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 )
 
 func main() {
@@ -19,21 +18,8 @@ func main() {
 		log.Fatalf("Failed to connect db: %v", err)
 	}
 
-	resp, err := getGames(1, 100)
-	if err != nil {
-		log.Fatalf("Failed to get page: %d with: %d games: %v", 1, 5, err)
-	}
-
-	if err = insertToDB(db, resp); err != nil {
-		// Save file for debugging
-		b, werr := json.MarshalIndent(resp, "\t", " ")
-		if err != nil {
-			log.Fatalf("failed to marshal resp: %v after insert err: %v", werr, err)
-		}
-		if werr = os.WriteFile("response.json", b, 0644); werr != nil {
-			log.Fatalf("failed to write resp file: %v after insert err: %v", werr, err)
-		}
-		log.Fatalf("failedto insert: %v", err)
+	if err = fetchAllGames(db); err != nil {
+		log.Fatalf("failed to fetch all games: %v", err)
 	}
 }
 
@@ -58,7 +44,40 @@ func connectDB() (*sqlx.DB, error) {
 	return db, nil
 }
 
-func getGames(page, count int) (CatalogResp, error) {
+func fetchAllGames(db *sqlx.DB) error {
+	const pageSize = 1000
+	productsCount := 1000
+	page := 1
+	total := 0
+	for ; productsCount == pageSize; page++ {
+		resp, err := fetchGames(page, pageSize)
+		if err != nil {
+			return fmt.Errorf("failed to get page: %d with: %d games: %w", page, pageSize, err)
+		}
+
+		if err = insertToDB(db, resp); err != nil {
+			// Save file for debugging
+			b, werr := json.MarshalIndent(resp, "\t", " ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal resp: %v after insert err: %w", werr, err)
+			}
+			if werr = os.WriteFile("response.json", b, 0644); werr != nil {
+				return fmt.Errorf("failed to write resp file: %v after insert err: %w", werr, err)
+			}
+			return fmt.Errorf("failed to insert: %v", err)
+		}
+
+		productsCount = len(resp.Products)
+		total += productsCount
+	}
+
+	log.Printf("Total pages: %d\n"+
+		"Total records: %d\n", page, total)
+
+	return nil
+}
+
+func fetchGames(page, count int) (CatalogResp, error) {
 	// After trial and error limit > 2000 gives 500 HTTP error code
 	// Update: with 1500 also can give error. Need to add backoff
 	// with less and less number of records in request
@@ -70,7 +89,6 @@ func getGames(page, count int) (CatalogResp, error) {
 		return CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
 	}
 	took := time.Since(start)
-	log.Printf("Request for: %d games on page: %d took: %v\n", count, page, took)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
@@ -82,6 +100,8 @@ func getGames(page, count int) (CatalogResp, error) {
 	if err = json.NewDecoder(response.Body).Decode(&resp); err != nil {
 		return CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
 	}
+
+	log.Printf("Fetched: %d games on page: %d took: %v\n", len(resp.Products), page, took)
 	return resp, nil
 }
 
@@ -108,74 +128,10 @@ func connect() (*sqlx.DB, error) {
 	dbPassword := "goger"
 	dbName := "goger"
 
-	// Create a connection string
-	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
+		"dbname=%s sslmode=disable", dbHost, dbPort, dbUser, dbPassword, dbName)
 
-	// Open a database connection
 	return sqlx.Open("postgres", connectionString)
-}
-
-func insert(db *sqlx.DB, p ProductRepo) error {
-	// Insert the data into the PostgreSQL table using sqlx.Named
-	const query = `
-		INSERT INTO games (
-			id, slug, features, screenshots, 
-			user_preferred_language_code, user_preferred_language_in_audio, user_preferred_language_in_text,
-			release_date, store_release_date,
-			product_type, title, cover_horizontal, cover_vertical, developers, publishers,
-			operating_systems, price_final, price_base, price_currency, price_discount,
-			product_state, genres, tags, reviews_rating
-		) VALUES (
-			:id, :slug, :features, :screenshots, 
-			:user_preferred_language_code, :user_preferred_language_in_audio, :user_preferred_language_in_text,
-			:release_date, :store_release_date,
-			:product_type, :title, :cover_horizontal, :cover_vertical, :developers, :publishers,
-			:operating_systems, :price_final, :price_base, :price_currency, :price_discount,
-			:product_state, :genres, :tags, :reviews_rating
-		)
-	`
-
-	// Create a map with named parameters
-	// Create a map with named parameters
-	namedParams := map[string]interface{}{
-		"id":                               p.ID,
-		"slug":                             p.Slug,
-		"features":                         pq.Array(p.Features),
-		"screenshots":                      pq.Array(p.Screenshots),
-		"user_preferred_language_code":     p.UserPreferredLangCode,
-		"user_preferred_language_in_audio": p.UserPreferredLangInAudio,
-		"user_preferred_language_in_text":  p.UserPreferredLangInText,
-		"release_date":                     p.ReleaseDate,
-		"store_release_date":               p.StoreReleaseDate,
-		"product_type":                     p.ProductType,
-		"title":                            p.Title,
-		"cover_horizontal":                 p.CoverHorizontal,
-		"cover_vertical":                   p.CoverVertical,
-		"developers":                       pq.Array(p.Developers),
-		"publishers":                       pq.Array(p.Publishers),
-		"operating_systems":                pq.Array(p.OperatingSystems),
-		"price_final":                      p.PriceFinal,
-		"price_base":                       p.PriceBase,
-		"price_currency":                   p.PriceCurrency,
-		"price_discount":                   p.PriceDiscount,
-		"product_state":                    p.ProductState,
-		"genres":                           pq.Array(p.Genres),
-		"tags":                             pq.Array(p.Tags),
-		"reviews_rating":                   p.ReviewsRating,
-	}
-
-	// Use sqlx.Named to automatically map struct fields to database columns
-	res, err := db.NamedExec(query, namedParams)
-	if err != nil {
-		return err
-	}
-	i, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	fmt.Println("Insert of", p.Slug, "affected", i, "rows")
-	return err
 }
 
 func insertBatch(db *sqlx.DB, products []ProductRepo) error {
@@ -186,15 +142,19 @@ func insertBatch(db *sqlx.DB, products []ProductRepo) error {
 		return fmt.Errorf("failed to build SQL: %w", err)
 	}
 
+	start := time.Now()
 	res, err := db.Exec(sql)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
+	took := time.Since(start)
 
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
+
+	log.Printf("Inserted: %d games in: %v\n", affectedRows, took)
 	l := len(products)
 	if affectedRows != int64(l) {
 		log.Printf("WARN: Inserted: %d/%d products from batch\n",

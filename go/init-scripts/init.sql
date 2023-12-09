@@ -12,6 +12,7 @@ $$;
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE goger TO goger;
 
+-- Keep all games from gog page
 CREATE TABLE IF NOT EXISTS games (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(255) NOT NULL,
@@ -42,3 +43,8 @@ CREATE TABLE IF NOT EXISTS games (
 
 CREATE INDEX IF NOT EXISTS idx_slug ON games(slug);
 CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);
+
+-- Remember when last run was executed
+CREATE TABLE IF NOT EXISTS last_run (
+    ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP(3) NOT NULL
+);
