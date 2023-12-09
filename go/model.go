@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 )
@@ -188,4 +189,123 @@ func extractSlugs(pairs []nameSlugPair) []string {
 		slugs = append(slugs, v.Slug)
 	}
 	return slugs
+}
+
+// #################################################
+// Reviews
+// #################################################
+
+type ReviewsResp struct {
+	Page              int         `json:"page"`
+	Limit             int         `json:"limit"`
+	Pages             int         `json:"pages"`
+	ReviewCount       int         `json:"reviewCount"`
+	OverallAvgRating  int         `json:"overallAvgRating"`
+	FilteredAvgRating int         `json:"filteredAvgRating"`
+	MostHelpful       MostHelpful `json:"mostHelpful"`
+	IsReviewable      bool        `json:"isReviewable"`
+	Links             Links       `json:"_links"`
+	Embedded          Embedded    `json:"_embedded"`
+}
+
+type Rating struct {
+	Value int `json:"value"`
+}
+
+type Content struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Language    string `json:"language"`
+}
+
+type AvatarLinks struct {
+	GogImageID string `json:"gog_image_id"`
+	Small      string `json:"small"`
+	Small2X    string `json:"small_2x"`
+	Medium     string `json:"medium"`
+	Medium2X   string `json:"medium_2x"`
+	Large      string `json:"large"`
+	Large2X    string `json:"large_2x"`
+	SdkImg32   string `json:"sdk_img_32"`
+	SdkImg64   string `json:"sdk_img_64"`
+	SdkImg184  string `json:"sdk_img_184"`
+	MenuSmall  string `json:"menu_small"`
+	MenuSmall2 string `json:"menu_small_2"`
+	MenuBig    string `json:"menu_big"`
+	MenuBig2   string `json:"menu_big_2"`
+}
+
+type Avatar struct {
+	Links AvatarLinks `json:"links"`
+}
+
+type Counters struct {
+	Games   int `json:"games"`
+	Reviews int `json:"reviews"`
+}
+
+type Reviewer struct {
+	ID       string   `json:"id"`
+	Username string   `json:"username"`
+	Avatar   Avatar   `json:"avatar"`
+	Counters Counters `json:"counters"`
+}
+
+type Votes struct {
+	Downvotes int `json:"downvotes"`
+	Upvotes   int `json:"upvotes"`
+}
+
+type MostHelpful struct {
+	ID                 string    `json:"id"`
+	ProductID          string    `json:"productId"`
+	Rating             Rating    `json:"rating"`
+	Content            Content   `json:"content"`
+	Reviewer           Reviewer  `json:"reviewer"`
+	Labels             []string  `json:"labels"`
+	Votes              Votes     `json:"votes"`
+	Date               time.Time `json:"date"`
+	CreationDate       time.Time `json:"creationDate"`
+	InternalUpdateDate string    `json:"internalUpdateDate"`
+}
+
+type First struct {
+	Href string `json:"href"`
+}
+
+type Last struct {
+	Href string `json:"href"`
+}
+
+type Next struct {
+	Href string `json:"href"`
+}
+
+type Previous struct {
+	Href string `json:"href"`
+}
+
+type Links struct {
+	First    First    `json:"first"`
+	Last     Last     `json:"last"`
+	Next     Next     `json:"next"`
+	Previous Previous `json:"previous"`
+}
+
+type Items struct {
+	ID                 string    `json:"id"`
+	ProductID          string    `json:"productId"`
+	Rating             Rating    `json:"rating"`
+	Content            Content   `json:"content"`
+	Reviewer           Reviewer  `json:"reviewer"`
+	Labels             []string  `json:"labels"`
+	Votes              Votes     `json:"votes"`
+	Date               time.Time `json:"date"`
+	CreationDate       time.Time `json:"creationDate"`
+	InternalUpdateDate string    `json:"internalUpdateDate"`
+	Links              Links     `json:"_links"`
+}
+
+type Embedded struct {
+	Items []Items `json:"items"`
 }
