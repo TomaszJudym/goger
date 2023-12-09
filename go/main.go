@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
@@ -13,64 +14,91 @@ import (
 )
 
 func main() {
-	// Get first page
+	db, err := connectDB()
+	if err != nil {
+		log.Fatalf("Failed to connect db: %v", err)
+	}
+
+	resp, err := getGames(1, 100)
+	if err != nil {
+		log.Fatalf("Failed to get page: %d with: %d games: %v", 1, 5, err)
+	}
+
+	if err = insertToDB(db, resp); err != nil {
+		// Save file for debugging
+		b, werr := json.MarshalIndent(resp, "\t", " ")
+		if err != nil {
+			log.Fatalf("failed to marshal resp: %v after insert err: %v", werr, err)
+		}
+		if werr = os.WriteFile("response.json", b, 0644); werr != nil {
+			log.Fatalf("failed to write resp file: %v after insert err: %v", werr, err)
+		}
+		log.Fatalf("failedto insert: %v", err)
+	}
+}
+
+func connectDB() (*sqlx.DB, error) {
+	dbHost := "pg"
+	dbPort := "5432"
+	dbUser := "goger"
+	dbPassword := "goger"
+	dbName := "goger"
+
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
+		"dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
+
+	db, err := sqlx.Open("postgres", connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open pg connection: %w", err)
+	}
+	if err = db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping pg: %w", err)
+	}
+	return db, nil
+}
+
+func getGames(page, count int) (CatalogResp, error) {
 	// After trial and error limit > 2000 gives 500 HTTP error code
 	// Update: with 1500 also can give error. Need to add backoff
 	// with less and less number of records in request
-	const url = `https://catalog.gog.com/v1/catalog?limit=5&page=1`
+	url := fmt.Sprintf(`https://catalog.gog.com/v1/catalog?limit=%d&page=%d`,
+		count, page)
+	start := time.Now()
 	response, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		return CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
 	}
+	took := time.Since(start)
+	log.Printf("Request for: %d games on page: %d took: %v\n", count, page, took)
 	defer response.Body.Close()
 
-	// Check the HTTP status code.
 	if response.StatusCode != http.StatusOK {
-		fmt.Printf("HTTP request failed with status code: %d\n",
+		return CatalogResp{}, fmt.Errorf("request failed with status code: %d",
 			response.StatusCode)
-		return
 	}
 
 	var resp CatalogResp
 	if err = json.NewDecoder(response.Body).Decode(&resp); err != nil {
-		log.Fatal("Failed to decode response:", err)
+		return CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
 	}
+	return resp, nil
+}
 
-	// Access the fields in the custom type.
-	fmt.Printf("Pages: %d\n", resp.Pages)
-	fmt.Printf("Product Count: %d\n", resp.ProductCount)
-	fmt.Printf("Products got : %d\n", len(resp.Products))
-
-	// For debugging write response to file
-	b, err := json.MarshalIndent(resp, "\t", " ")
-	if err != nil {
-		log.Fatal("Failed to marshal resp:", err)
-	}
-	if err = os.WriteFile("response.json", b, 0644); err != nil {
-		log.Fatal("Failed to write response.json:", err)
-	}
-
-	db, err := connect()
-	if err != nil {
-		log.Fatal("Failed to connect to postgres:", err)
-	}
-	if err = db.Ping(); err != nil {
-		log.Fatal("failed to ping postgres", err)
-	}
-
-	var rp []ProductRepo
+func insertToDB(db *sqlx.DB, resp CatalogResp) error {
+	pr := make([]ProductRepo, 0, len(resp.Products))
 	for _, p := range resp.Products {
 		repoProduct, err := p.toRepo()
 		if err != nil {
-			log.Fatalf("Failed to convert %v to repo: %v\n", resp.Products[0], err)
+			return fmt.Errorf("failed to convert: %v to repo: %w", p, err)
 		}
-		rp = append(rp, repoProduct)
+		pr = append(pr, repoProduct)
 	}
 
-	if err = insertBatch(db, rp); err != nil {
-		log.Fatalf("Failed to insert: %s: %v\n", resp.Products[0].Slug, err)
+	if err := insertBatch(db, pr); err != nil {
+		return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 	}
+	return nil
 }
 
 func connect() (*sqlx.DB, error) {
@@ -151,18 +179,13 @@ func insert(db *sqlx.DB, p ProductRepo) error {
 }
 
 func insertBatch(db *sqlx.DB, products []ProductRepo) error {
-	// Create a goqu Builder
 	builder := goqu.Insert("games").Rows(products)
 
-	// Use goqu for NamedExec
-	sql, args, err := builder.ToSQL()
+	sql, _, err := builder.ToSQL()
 	if err != nil {
 		return fmt.Errorf("failed to build SQL: %w", err)
 	}
 
-	fmt.Println("ARGS: ", args)
-
-	// Use sqlx.NamedExec to execute the query
 	res, err := db.Exec(sql)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -172,7 +195,10 @@ func insertBatch(db *sqlx.DB, products []ProductRepo) error {
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
-	fmt.Printf("Insert affected %d rows\n", affectedRows)
+	l := len(products)
+	if affectedRows != int64(l) {
+		log.Printf("WARN: Inserted: %d/%d products from batch\n",
+			affectedRows, l)
+	}
 	return nil
 }

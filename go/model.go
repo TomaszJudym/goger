@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/lib/pq"
 )
@@ -15,13 +16,10 @@ type CatalogResp struct {
 }
 
 type Product struct {
-	ID       string `json:"id"`
-	Slug     string `json:"slug"`
-	Features []struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	} `json:"features"`
-	Screenshots           []string `json:"screenshots"`
+	ID                    string         `json:"id"`
+	Slug                  string         `json:"slug"`
+	Features              []nameSlugPair `json:"features"`
+	Screenshots           []string       `json:"screenshots"`
 	UserPreferredLanguage struct {
 		Code    string `json:"code"`
 		InAudio bool   `json:"inAudio"`
@@ -50,16 +48,15 @@ type Product struct {
 			Currency string `json:"currency"`
 		} `json:"baseMoney"`
 	} `json:"price"`
-	ProductState string `json:"productState"`
-	Genres       []struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	} `json:"genres"`
-	Tags []struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	} `json:"tags"`
-	ReviewsRating int `json:"reviewsRating"`
+	ProductState  string         `json:"productState"`
+	Genres        []nameSlugPair `json:"genres"`
+	Tags          []nameSlugPair `json:"tags"`
+	ReviewsRating int            `json:"reviewsRating"`
+}
+
+type nameSlugPair struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
 }
 
 // ProductRepo represents the simplified representation for PostgreSQL storage
@@ -92,6 +89,9 @@ type ProductRepo struct {
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
 func (p Product) toRepo() (ProductRepo, error) {
+	// TODO: Move logic to sanitize() method
+	// Prices can have currency ($) string in them.
+	// Extract pure float from them.
 	priceFinal, err := extractFloat(p.Price.Final)
 	if err != nil {
 		return ProductRepo{}, fmt.Errorf("failed to extract float "+
@@ -107,11 +107,31 @@ func (p Product) toRepo() (ProductRepo, error) {
 		return ProductRepo{}, fmt.Errorf("failed to extract float "+
 			"from discount: %s: %w", p.Price.FinalMoney.Discount, err)
 	}
+	// Dates can be empty. If only one is present (like with cyberpunk 2077)
+	// set both dates to it. Otherwise just set zero value or db will cry about
+	// empty string date.
+	const emptyDate = `0001-01-01`
+	if p.ReleaseDate == "" && p.StoreReleaseDate == "" {
+		p.ReleaseDate, p.StoreReleaseDate = emptyDate, emptyDate
+	}
+	if p.StoreReleaseDate == "" {
+		p.StoreReleaseDate = p.ReleaseDate
+	}
+	if p.ReleaseDate == "" {
+		p.ReleaseDate = p.StoreReleaseDate
+	}
+	// Screenshots contain placeholder {formatter} instead of exact URL.
+	// On cyberpunk phantom liberty page it "product_card_v2_mobile_slider_639".
+	// It's working so apply this to placeholder in strings.
+	for i, s := range p.Screenshots {
+		const rep = "product_card_v2_mobile_slider_639"
+		p.Screenshots[i] = strings.Replace(s, "{formatter}", rep, 1)
+	}
 
 	return ProductRepo{
 		ID:                       p.ID,
 		Slug:                     p.Slug,
-		Features:                 mapFeatures(p.Features),
+		Features:                 extractSlugs(p.Features),
 		Screenshots:              p.Screenshots,
 		UserPreferredLangCode:    p.UserPreferredLanguage.Code,
 		UserPreferredLangInAudio: p.UserPreferredLanguage.InAudio,
@@ -130,8 +150,8 @@ func (p Product) toRepo() (ProductRepo, error) {
 		PriceCurrency:            p.Price.FinalMoney.Currency,
 		PriceDiscount:            priceDiscount,
 		ProductState:             p.ProductState,
-		Genres:                   mapGenres(p.Genres),
-		Tags:                     mapTags(p.Tags),
+		Genres:                   extractSlugs(p.Genres),
+		Tags:                     extractSlugs(p.Tags),
 		ReviewsRating:            p.ReviewsRating,
 	}, nil
 }
@@ -152,43 +172,11 @@ func extractFloat(input string) (float64, error) {
 	return result, nil
 }
 
-// mapFeatures maps the original Features to strings
-func mapFeatures(originalFeatures []struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-}) []string {
-	features := make([]string, len(originalFeatures))
-	for i, feature := range originalFeatures {
-		// If name and slug are almost the same, consider name to be equal to slug
-		if feature.Name == feature.Slug {
-			features[i] = feature.Slug
-		} else {
-			features[i] = fmt.Sprintf("%s (%s)", feature.Name, feature.Slug)
-		}
+// extractSlugs returns only slugs from passed pairs.
+func extractSlugs(pairs []nameSlugPair) []string {
+	slugs := make([]string, 0, len(pairs))
+	for _, v := range pairs {
+		slugs = append(slugs, v.Slug)
 	}
-	return features
-}
-
-// mapGenres maps the original Genres to strings
-func mapGenres(originalGenres []struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-}) []string {
-	genres := make([]string, len(originalGenres))
-	for i, genre := range originalGenres {
-		genres[i] = genre.Slug
-	}
-	return genres
-}
-
-// mapTags maps the original Tags to strings
-func mapTags(originalTags []struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-}) []string {
-	tags := make([]string, len(originalTags))
-	for i, tag := range originalTags {
-		tags[i] = tag.Slug
-	}
-	return tags
+	return slugs
 }

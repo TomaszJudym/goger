@@ -1,4 +1,4 @@
-FROM golang:1.21.0-alpine3.18 AS binary-builder
+FROM golang:1.21.3-alpine3.18 AS binary-builder
 RUN apk update && apk upgrade && apk --update add upx
 WORKDIR /builder
 COPY go.mod go.sum *.go ./
