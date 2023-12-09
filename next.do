@@ -43,12 +43,6 @@ Then even no need for schema.
 
 ##########################################
 
-Modify this:
-
-	   "userPreferredLanguage": {
-	    "code": "en",
-	    "inAudio": true,
-	    "inText": true
-	   }
-From currently array of strings in db to 3 columns.
-And then maybe gods of postgres will help.
+Add configurable batch size.
+By default make it 500.
+On error backoff and try to fetch less up to as little as 10.
