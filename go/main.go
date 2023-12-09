@@ -21,6 +21,10 @@ func main() {
 	if err = fetchAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
 	}
+
+	if err = saveRunTimestamp(db); err != nil {
+		log.Fatalf("Failed to save run ts: %v", err)
+	}
 }
 
 func connectDB() (*sqlx.DB, error) {
@@ -161,4 +165,15 @@ func insertBatch(db *sqlx.DB, products []ProductRepo) error {
 			affectedRows, l)
 	}
 	return nil
+}
+
+func saveRunTimestamp(db *sqlx.DB) error {
+	ts := time.Now().UTC().Format("2006-01-02 15:04:05.999")
+	// Upsert if there's record already
+	query := `
+		INSERT INTO last_run (onerow_id, ts) VALUES (true, $1)
+		ON CONFLICT (onerow_id) DO UPDATE SET ts = $1
+	`
+	_, err := db.Exec(query, ts)
+	return err
 }

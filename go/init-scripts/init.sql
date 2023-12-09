@@ -46,5 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);
 
 -- Remember when last run was executed
 CREATE TABLE IF NOT EXISTS last_run (
-    ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP(3) NOT NULL
+    -- just for usage with ON CONFLICT to overwite it.
+    -- table should have only single record to track last run time
+    onerow_id BOOL PRIMARY KEY DEFAULT true, 
+    ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+    CONSTRAINT onerow_uni CHECK (onerow_id)
 );
