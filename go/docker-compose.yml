@@ -9,8 +9,7 @@ services:
       POSTGRES_USER: goger
       POSTGRES_PASSWORD: goger
     volumes:
-# For testing let's run in memory
-#      - ./postgres-data:/var/lib/postgresql/data
+      - ./postgres-data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"

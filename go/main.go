@@ -20,6 +20,10 @@ func main() {
 		log.Fatalf("Failed to connect db: %v", err)
 	}
 
+	if err = clearTables(db); err != nil {
+		log.Fatalf("Failed to clear tables: %v", err)
+	}
+
 	if err = fetchAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
 	}
@@ -50,6 +54,22 @@ func connectDB() (*sqlx.DB, error) {
 	return db, nil
 }
 
+func clearTables(db *sqlx.DB) error {
+	// Tables to delete records from
+	tables := []string{"games", "reviews"}
+
+	// Iterate over tables and delete records
+	for _, table := range tables {
+		query := fmt.Sprintf("DELETE FROM %s;", table)
+		_, err := db.Exec(query)
+		if err != nil {
+			return fmt.Errorf("query: %s failed: %w", query, err)
+		}
+	}
+
+	return nil
+}
+
 func fetchAllGames(db *sqlx.DB) error {
 	const pageSize = 1000
 	productsCount := 1000
@@ -78,7 +98,7 @@ func fetchAllGames(db *sqlx.DB) error {
 
 		// Fetch reviews for games <- close into method
 		gameIDsToTitles := resp.gameIDsToTitles()
-		const batchSize = 60
+		const batchSize = 50
 		rvs := make([]Review, 0, batchSize)
 		for gameID, title := range gameIDsToTitles {
 			// Fetch reviews for specific game
@@ -241,7 +261,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		resp *http.Response
 		err  error
 	)
-	for i := 1; i <= maxRetries; i++ {
+	for i := 0; i < maxRetries; i++ {
 		start := time.Now()
 		resp, err = http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
@@ -250,7 +270,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		took := time.Since(start)
 
 		// Incremental backoff
-		sleep := time.Duration(i) * 10 * time.Second
+		sleep := (time.Duration(i) * 10 * time.Second) + 30*time.Second
 		fmt.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
 			"Retrying in %v...\n", i, took, http.StatusText(resp.StatusCode),
 			resp.StatusCode, sleep)
