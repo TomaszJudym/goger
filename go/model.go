@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -10,6 +11,16 @@ import (
 
 	"github.com/lib/pq"
 )
+
+type Reviews []Review
+
+func (r Reviews) toRepo() []ReviewRepo {
+	ret := make([]ReviewRepo, 0, len(r))
+	for _, rev := range r {
+		ret = append(ret, rev.toRepo())
+	}
+	return ret
+}
 
 type CatalogResp struct {
 	Pages        int       `json:"pages"`
@@ -325,15 +336,9 @@ func (r Review) toRepo() ReviewRepo {
 	if err != nil {
 		date = time.Time{}
 	}
-	var links AvatarLinks
-	l := r.Reviewer.Avatar.Links
-	if l != nil {
-		var ok bool
-		links, ok = l.(AvatarLinks)
-		if !ok {
-			log.Printf("WARN: Failed to convert links: %v (%T) to "+
-				"expected type", l, l)
-		}
+	links, err := toRepoLinks(r.Reviewer.Avatar.Links)
+	if err != nil {
+		log.Printf("WARN: Failed to convert links to repo: %v\n", err)
 	}
 	return ReviewRepo{
 		ID:                 r.ID,
@@ -367,6 +372,41 @@ func (r Review) toRepo() ReviewRepo {
 		CreationDate:       creationDate,
 		InternalUpdateDate: internalDate,
 	}
+}
+
+// toRepoLinks converts expecter in payload links to
+// their repo representation
+func toRepoLinks(respLinks any) (AvatarLinks, error) {
+	var links AvatarLinks
+	l := respLinks
+	if l != nil {
+		var ok bool
+		links, ok = l.(AvatarLinks)
+		if !ok {
+			// Otherwise it can present as map[string]any
+			m, ok := l.(map[string]any)
+			if ok {
+				b, err := json.Marshal(m)
+				if err != nil {
+					return links, fmt.Errorf("WARN: Failed to "+
+						"marshal links: %v (%T): %v", m, m, err)
+				}
+
+				if err = json.Unmarshal(b, &links); err != nil {
+					return links, fmt.Errorf("WARN: Failed to unmarshal "+
+						"links: %v (%T) into AvatarLinks: %v", m, m, err)
+				}
+			} else {
+				// It can also be empty array []any
+				_, ok = l.(any)
+				if !ok {
+					return links, fmt.Errorf("WARN: Links are non of "+
+						"expected types: %v (%T)", l, l)
+				}
+			}
+		}
+	}
+	return links, nil
 }
 
 type ReviewRepo struct {

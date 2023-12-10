@@ -66,3 +66,10 @@ Sometimes links are array and sometimes are not?
 
 FOUND: Links are normally dictionary but if they are empty an empty array is set :_)
 Need to add handler for this case.
+
+##########################################
+
+Modify fetching pages. Something seems to be wrong
+as responses can contain more than limit set in request.
+Fire first request and use {pages} from response to figure
+how much work was left.
