@@ -17,7 +17,7 @@ type CatalogResp struct {
 	Products     []Product `json:"products"`
 }
 
-func (c CatalogResp) productToTitles() map[string]string {
+func (c CatalogResp) gameIDsToTitles() map[string]string {
 	ret := make(map[string]string, len(c.Products))
 	for _, p := range c.Products {
 		ret[p.ID] = p.Title

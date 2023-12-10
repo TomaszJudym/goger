@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -75,33 +76,42 @@ func fetchAllGames(db *sqlx.DB) error {
 		productsCount = len(resp.Products)
 		total += productsCount
 
-		// Fetch reviews for a game
-		productIDsToTitles := resp.productToTitles()
-		const batchSize = 1000
-		count := batchSize
-
-		var id, title string
-		for k, v := range productIDsToTitles {
-			id, title = k, v
-			break
-		}
-
+		// Fetch reviews for games <- close into method
+		gameIDsToTitles := resp.gameIDsToTitles()
+		const batchSize = 60
 		rvs := make([]Review, 0, batchSize)
-		start := time.Now()
-		i := 1
-		for ; count == batchSize; i++ {
-			reviews, err := fetchReviews(id, i)
-			if err != nil {
-				return fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
-					id, title, err)
+		for gameID, title := range gameIDsToTitles {
+			// Fetch reviews for specific game
+			i := 1
+			revsFetchStart := time.Now()
+			count := batchSize
+			countForGame := 0
+			for ; count == batchSize; i++ {
+				start := time.Now()
+				reviews, err := fetchReviews(gameID, i)
+				if err != nil {
+					return fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
+						gameID, title, err)
+				}
+				took := time.Since(start)
+
+				count = len(reviews)
+				rvs = append(rvs, reviews...)
+				countForGame += count
+				log.Printf("Fetched: %d reviews from page: %d of: %s in: %v",
+					count, page, title, took)
+
+				// Sleep a bit to not make gog angry.
+				time.Sleep(time.Millisecond * time.Duration(rand.Intn(500)+500))
+
+				// Insert to DB
 			}
+			revsFetchTook := time.Since(revsFetchStart)
 
-			count = len(reviews)
-			rvs = append(rvs, reviews...)
+			log.Printf("Fetched in total: %d reviews of: %s in: %v\n",
+				countForGame, title, revsFetchTook)
 		}
-		took := time.Since(start)
 
-		log.Printf("Fetched in total: %d reviews in: %v\n", len(rvs), took)
 	}
 
 	log.Printf("Total pages: %d\n"+
@@ -203,14 +213,12 @@ func fetchReviews(gameID string, page int) ([]Review, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, batchSize)
-	start := time.Now()
 	resp, err := getWithBackoff(url, 10)
 	if err != nil {
 		// What gog is angry about?
 		return nil, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
-	took := time.Since(start)
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -225,8 +233,6 @@ func fetchReviews(gameID string, page int) ([]Review, error) {
 			page, string(b), err)
 	}
 
-	log.Printf("Fetched: %d reviews from page: %d in: %v\n",
-		len(data.Embedded.Reviews), page, took)
 	return data.Embedded.Reviews, nil
 }
 
@@ -235,7 +241,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		resp *http.Response
 		err  error
 	)
-	for i := 0; i < maxRetries; i++ {
+	for i := 1; i <= maxRetries; i++ {
 		start := time.Now()
 		resp, err = http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
@@ -244,7 +250,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		took := time.Since(start)
 
 		// Incremental backoff
-		sleep := 5*time.Second + (time.Duration(i) * time.Second)
+		sleep := time.Duration(i) * 10 * time.Second
 		fmt.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
 			"Retrying in %v...\n", i, took, http.StatusText(resp.StatusCode),
 			resp.StatusCode, sleep)
