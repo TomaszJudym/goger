@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +15,14 @@ type CatalogResp struct {
 	Pages        int       `json:"pages"`
 	ProductCount int       `json:"productCount"`
 	Products     []Product `json:"products"`
+}
+
+func (c CatalogResp) productToTitles() map[string]string {
+	ret := make(map[string]string, len(c.Products))
+	for _, p := range c.Products {
+		ret[p.ID] = p.Title
+	}
+	return ret
 }
 
 type Product struct {
@@ -196,16 +205,16 @@ func extractSlugs(pairs []nameSlugPair) []string {
 // #################################################
 
 type ReviewsResp struct {
-	Page              int         `json:"page"`
-	Limit             int         `json:"limit"`
-	Pages             int         `json:"pages"`
-	ReviewCount       int         `json:"reviewCount"`
-	OverallAvgRating  int         `json:"overallAvgRating"`
-	FilteredAvgRating int         `json:"filteredAvgRating"`
-	MostHelpful       MostHelpful `json:"mostHelpful"`
-	IsReviewable      bool        `json:"isReviewable"`
-	Links             Links       `json:"_links"`
-	Embedded          Embedded    `json:"_embedded"`
+	Page              int             `json:"page"`
+	Limit             int             `json:"limit"`
+	Pages             int             `json:"pages"`
+	ReviewCount       int             `json:"reviewCount"`
+	OverallAvgRating  float64         `json:"overallAvgRating"`
+	FilteredAvgRating float64         `json:"filteredAvgRating"`
+	MostHelpful       MostHelpful     `json:"mostHelpful"`
+	IsReviewable      bool            `json:"isReviewable"`
+	Links             NavigationLinks `json:"_links"`
+	Embedded          Embedded        `json:"_embedded"`
 }
 
 type Rating struct {
@@ -218,7 +227,7 @@ type Content struct {
 	Language    string `json:"language"`
 }
 
-type Links struct {
+type AvatarLinks struct {
 	GogImageID string `json:"gog_image_id"`
 	Small      string `json:"small"`
 	Small2X    string `json:"small_2x"`
@@ -236,7 +245,7 @@ type Links struct {
 }
 
 type Avatar struct {
-	Links Links `json:"links"`
+	Links any `json:"links"`
 }
 type Counters struct {
 	Games   int `json:"games"`
@@ -273,43 +282,122 @@ type MostHelpful struct {
 	Date               time.Time `json:"date"`
 	CreationDate       time.Time `json:"creationDate"`
 	InternalUpdateDate string    `json:"internalUpdateDate"`
-	Links              Links     `json:"_links"`
 }
-type First struct {
+
+type HrefWrapper struct {
 	Href string `json:"href"`
 }
-type Last struct {
-	Href string `json:"href"`
+
+type NavigationLinks struct {
+	First    HrefWrapper `json:"first"`
+	Last     HrefWrapper `json:"last"`
+	Next     HrefWrapper `json:"next"`
+	Previous HrefWrapper `json:"previous"`
 }
-type Next struct {
-	Href string `json:"href"`
+
+type Review struct {
+	ID                 string   `json:"id"`
+	ProductID          string   `json:"productId"`
+	Rating             Rating   `json:"nrating"`
+	Content            Content  `json:"content"`
+	Reviewer           Reviewer `json:"reviewer"`
+	Labels             []string `json:"labels"`
+	Votes              Votes    `json:"votes"`
+	Date               string   `json:"date"`
+	CreationDate       string   `json:"creationDate"`
+	InternalUpdateDate string   `json:"internalUpdateDate"`
 }
-type Previous struct {
-	Href string `json:"href"`
-}
-type Links struct {
-	First    First    `json:"first"`
-	Last     Last     `json:"last"`
-	Next     Next     `json:"next"`
-	Previous Previous `json:"previous"`
-}
-type Links struct {
-	Vote   Vote   `json:"vote"`
-	Report Report `json:"report"`
-}
-type Items struct {
-	ID                 string    `json:"id"`
-	ProductID          string    `json:"productId"`
-	Rating             Rating    `json:"rating"`
-	Content            Content   `json:"content"`
-	Reviewer           Reviewer  `json:"reviewer"`
-	Labels             []string  `json:"labels"`
-	Votes              Votes     `json:"votes"`
-	Date               time.Time `json:"date"`
-	CreationDate       time.Time `json:"creationDate"`
-	InternalUpdateDate string    `json:"internalUpdateDate"`
-	Links              Links     `json:"_links"`
-}
+
 type Embedded struct {
-	Items []Items `json:"items"`
+	Reviews []Review `json:"items"`
+}
+
+func (r Review) toRepo() ReviewRepo {
+	date, err := time.Parse(r.Date, time.RFC3339)
+	if err != nil {
+		date = time.Time{}
+	}
+	creationDate, err := time.Parse(r.CreationDate, time.RFC3339)
+	if err != nil {
+		date = time.Time{}
+	}
+	internalDate, err := time.Parse(r.InternalUpdateDate, time.RFC3339)
+	if err != nil {
+		date = time.Time{}
+	}
+	var links AvatarLinks
+	l := r.Reviewer.Avatar.Links
+	if l != nil {
+		var ok bool
+		links, ok = l.(AvatarLinks)
+		if !ok {
+			log.Printf("WARN: Failed to convert links: %v (%T) to "+
+				"expected type", l, l)
+		}
+	}
+	return ReviewRepo{
+		ID:                 r.ID,
+		ProductID:          r.ProductID,
+		RatingValue:        r.Rating.Value,
+		Title:              r.Content.Title,
+		Description:        r.Content.Description,
+		Language:           r.Content.Language,
+		ReviewerID:         r.Reviewer.ID,
+		ReviewerUsername:   r.Reviewer.Username,
+		AvatarGogImageID:   links.GogImageID,
+		AvatarSmall:        links.Small,
+		AvatarSmall2x:      links.Small2X,
+		AvatarMedium:       links.Medium,
+		AvatarMedium2x:     links.Medium2X,
+		AvatarLarge:        links.Large,
+		AvatarLarge2x:      links.Large2X,
+		AvatarSDKImg32:     links.SdkImg32,
+		AvatarSDKImg64:     links.SdkImg64,
+		AvatarSDKImg184:    links.SdkImg184,
+		AvatarMenuSmall:    links.MenuSmall,
+		AvatarMenuSmall2:   links.MenuSmall2,
+		AvatarMenuBig:      links.MenuBig,
+		AvatarMenuBig2:     links.MenuBig2,
+		CountersGames:      r.Reviewer.Counters.Games,
+		CountersReviews:    r.Reviewer.Counters.Reviews,
+		Labels:             pq.StringArray(r.Labels),
+		Downvotes:          r.Votes.Downvotes,
+		Upvotes:            r.Votes.Upvotes,
+		ReviewDate:         date,
+		CreationDate:       creationDate,
+		InternalUpdateDate: internalDate,
+	}
+}
+
+type ReviewRepo struct {
+	ID                 string         `json:"id" db:"review_id"`
+	ProductID          string         `json:"productId" db:"product_id"`
+	RatingValue        int            `json:"rating" db:"rating_value"`
+	Title              string         `json:"title" db:"title"`
+	Description        string         `json:"description" db:"description"`
+	Language           string         `json:"language" db:"language"`
+	ReviewerID         string         `json:"reviewerId" db:"reviewer_id"`
+	ReviewerUsername   string         `json:"reviewerUsername" db:"reviewer_username"`
+	AvatarGogImageID   string         `json:"avatarGogImageId" db:"avatar_gog_image_id"`
+	AvatarSmall        string         `json:"avatarSmall" db:"avatar_small"`
+	AvatarSmall2x      string         `json:"avatarSmall2x" db:"avatar_small_2x"`
+	AvatarMedium       string         `json:"avatarMedium" db:"avatar_medium"`
+	AvatarMedium2x     string         `json:"avatarMedium2x" db:"avatar_medium_2x"`
+	AvatarLarge        string         `json:"avatarLarge" db:"avatar_large"`
+	AvatarLarge2x      string         `json:"avatarLarge2x" db:"avatar_large_2x"`
+	AvatarSDKImg32     string         `json:"avatarSdkImg32" db:"avatar_sdk_img_32"`
+	AvatarSDKImg64     string         `json:"avatarSdkImg64" db:"avatar_sdk_img_64"`
+	AvatarSDKImg184    string         `json:"avatarSdkImg184" db:"avatar_sdk_img_184"`
+	AvatarMenuSmall    string         `json:"avatarMenuSmall" db:"avatar_menu_small"`
+	AvatarMenuSmall2   string         `json:"avatarMenuSmall2" db:"avatar_menu_small_2"`
+	AvatarMenuBig      string         `json:"avatarMenuBig" db:"avatar_menu_big"`
+	AvatarMenuBig2     string         `json:"avatarMenuBig2" db:"avatar_menu_big_2"`
+	CountersGames      int            `json:"countersGames" db:"counters_games"`
+	CountersReviews    int            `json:"countersReviews" db:"counters_reviews"`
+	Labels             pq.StringArray `json:"labels" db:"labels"`
+	Downvotes          int            `json:"downvotes" db:"downvotes"`
+	Upvotes            int            `json:"upvotes" db:"upvotes"`
+	ReviewDate         time.Time      `json:"date" db:"review_date"`
+	CreationDate       time.Time      `json:"creationDate" db:"creation_date"`
+	InternalUpdateDate time.Time      `json:"internalUpdateDate" db:"internal_update_date"`
 }

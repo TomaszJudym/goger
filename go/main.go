@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -62,7 +63,7 @@ func fetchAllGames(db *sqlx.DB) error {
 		if err = insertToDB(db, resp); err != nil {
 			// Save file for debugging
 			b, werr := json.MarshalIndent(resp, "\t", " ")
-			if err != nil {
+			if werr != nil {
 				return fmt.Errorf("failed to marshal resp: %v after insert err: %w", werr, err)
 			}
 			if werr = os.WriteFile("response.json", b, 0644); werr != nil {
@@ -73,6 +74,34 @@ func fetchAllGames(db *sqlx.DB) error {
 
 		productsCount = len(resp.Products)
 		total += productsCount
+
+		// Fetch reviews for a game
+		productIDsToTitles := resp.productToTitles()
+		const batchSize = 1000
+		count := batchSize
+
+		var id, title string
+		for k, v := range productIDsToTitles {
+			id, title = k, v
+			break
+		}
+
+		rvs := make([]Review, 0, batchSize)
+		start := time.Now()
+		i := 1
+		for ; count == batchSize; i++ {
+			reviews, err := fetchReviews(id, i)
+			if err != nil {
+				return fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
+					id, title, err)
+			}
+
+			count = len(reviews)
+			rvs = append(rvs, reviews...)
+		}
+		took := time.Since(start)
+
+		log.Printf("Fetched in total: %d reviews in: %v\n", len(rvs), took)
 	}
 
 	log.Printf("Total pages: %d\n"+
@@ -114,12 +143,13 @@ func insertToDB(db *sqlx.DB, resp CatalogResp) error {
 	for _, p := range resp.Products {
 		repoProduct, err := p.toRepo()
 		if err != nil {
-			return fmt.Errorf("failed to convert: %v to repo: %w", p, err)
+			return fmt.Errorf("failed to convert: %s to repo: %w", p.Title, err)
 		}
 		pr = append(pr, repoProduct)
 	}
 
 	if err := insertBatch(db, pr); err != nil {
+		fmt.Printf("ERROR: %v type: %T\n", err, err)
 		return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 	}
 	return nil
@@ -165,6 +195,63 @@ func insertBatch(db *sqlx.DB, products []ProductRepo) error {
 			affectedRows, l)
 	}
 	return nil
+}
+
+func fetchReviews(gameID string, page int) ([]Review, error) {
+	const batchSize = 1000
+
+	url := fmt.Sprintf(
+		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
+		gameID, page, batchSize)
+	start := time.Now()
+	resp, err := getWithBackoff(url, 10)
+	if err != nil {
+		// What gog is angry about?
+		return nil, fmt.Errorf("failed to get: %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	took := time.Since(start)
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read page: %d resp body: %w",
+			page, err)
+	}
+
+	var data ReviewsResp
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
+			page, string(b), err)
+	}
+
+	log.Printf("Fetched: %d reviews from page: %d in: %v\n",
+		len(data.Embedded.Reviews), page, took)
+	return data.Embedded.Reviews, nil
+}
+
+func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
+	var (
+		resp *http.Response
+		err  error
+	)
+	for i := 0; i < maxRetries; i++ {
+		start := time.Now()
+		resp, err = http.Get(url)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			break
+		}
+		took := time.Since(start)
+
+		// Incremental backoff
+		sleep := 5*time.Second + (time.Duration(i) * time.Second)
+		fmt.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
+			"Retrying in %v...\n", i, took, http.StatusText(resp.StatusCode),
+			resp.StatusCode, sleep)
+		time.Sleep(sleep)
+	}
+
+	return resp, err
 }
 
 func saveRunTimestamp(db *sqlx.DB) error {
