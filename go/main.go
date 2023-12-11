@@ -252,14 +252,13 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string) (int, error) {
 		return resp.ReviewCount, nil
 	}
 
-	missing := onPage - inDB
 	// Reviews are present on gog page in chrono order. Let's check oldest page to
 	// get and continue from there.
-	var add int
-	if missing%batchSize != 0 { // ceil
-		add = 1
+	missing := onPage - inDB
+	missingPages, remainder := missing/batchSize, missing%batchSize // ceil
+	if remainder > 0 {
+		missingPages++
 	}
-	missingPages := missing/batchSize + add
 	startPage := resp.Pages - missingPages
 
 	log.Printf("Fetching %d missing pages out of: %d for: %s",
