@@ -19,9 +19,9 @@ func main() {
 		log.Fatalf("Failed to connect db: %v", err)
 	}
 
-	if err = clearTables(db); err != nil {
-		log.Fatalf("Failed to clear tables: %v", err)
-	}
+	//	if err = clearTables(db); err != nil {
+	//		log.Fatalf("Failed to clear tables: %v", err)
+	//	}
 
 	if err = downloadAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
