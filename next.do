@@ -73,3 +73,14 @@ Modify fetching pages. Something seems to be wrong
 as responses can contain more than limit set in request.
 Fire first request and use {pages} from response to figure
 how much work was left.
+
+##########################################
+
+Then in reviews check how many are there now vs how many in db.
+If in db <= on page, fetch newest page until founding ID present in db.
+
+Problem if service goes down when only half reviews are downloaded.
+So instead of downloading from start:
+Get first page
+If nothing - no reviews.
+Otherwise reverse loop, got pages number after all
