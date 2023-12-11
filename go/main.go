@@ -240,7 +240,7 @@ func fetchReviews(gameID string, page, limit int) (ReviewsResp, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, limit)
-	resp, err := getWithBackoff(url, 10)
+	resp, err := getWithBackoff(url, 9999)
 	if err != nil {
 		// What gog is angry about?
 		return ReviewsResp{}, fmt.Errorf("failed to get: %s: %w", url, err)
