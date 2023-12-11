@@ -209,7 +209,7 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) (int, error
 		countForGame := 0
 		for ; count == batchSize; i++ {
 			start := time.Now()
-			reviews, err := fetchReviews(gameID, i)
+			reviews, err := fetchReviews(gameID, i, batchSize)
 			if err != nil {
 				return -1, fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
 					gameID, title, err)
@@ -239,12 +239,10 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) (int, error
 	return total, nil
 }
 
-func fetchReviews(gameID string, page int) (Reviews, error) {
-	const batchSize = 1000
-
+func fetchReviews(gameID string, page, limit int) (Reviews, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
-		gameID, page, batchSize)
+		gameID, page, limit)
 	resp, err := getWithBackoff(url, 10)
 	if err != nil {
 		// What gog is angry about?
