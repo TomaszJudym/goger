@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -209,21 +208,19 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) (int, error
 		countForGame := 0
 		for ; count == batchSize; i++ {
 			start := time.Now()
-			reviews, err := fetchReviews(gameID, i, batchSize)
+			resp, err := fetchReviews(gameID, i, batchSize)
 			if err != nil {
 				return -1, fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
 					gameID, title, err)
 			}
 			took := time.Since(start)
 
+			reviews := resp.Embedded.Reviews
 			count = len(reviews)
 			rvs = append(rvs, reviews...)
 			countForGame += count
-			log.Printf("Fetched: %d reviews from page: %d of: %s in: %v",
-				count, i, title, took)
-
-			// Sleep a bit to not make gog angry.
-			time.Sleep(time.Millisecond * time.Duration(rand.Intn(500)+500))
+			log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
+				countForGame, resp.ReviewCount, i, resp.Pages, title, took)
 
 			if err = insertReviews(db, reviews.toRepo()); err != nil {
 				return -1, fmt.Errorf("failed to insert page: %d of: %d reviews "+
@@ -239,31 +236,31 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) (int, error
 	return total, nil
 }
 
-func fetchReviews(gameID string, page, limit int) (Reviews, error) {
+func fetchReviews(gameID string, page, limit int) (ReviewsResp, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, limit)
 	resp, err := getWithBackoff(url, 10)
 	if err != nil {
 		// What gog is angry about?
-		return nil, fmt.Errorf("failed to get: %s: %w", url, err)
+		return ReviewsResp{}, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read page: %d resp body: %w",
+		return ReviewsResp{}, fmt.Errorf("failed to read page: %d resp body: %w",
 			page, err)
 	}
 
 	var data ReviewsResp
 	err = json.Unmarshal(b, &data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
+		return ReviewsResp{}, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
 			page, string(b), err)
 	}
 
-	return data.Embedded.Reviews, nil
+	return data, nil
 }
 
 func getWithBackoff(url string, maxRetries int) (*http.Response, error) {

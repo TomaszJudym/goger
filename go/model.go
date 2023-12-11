@@ -320,7 +320,7 @@ type Review struct {
 }
 
 type Embedded struct {
-	Reviews []Review `json:"items"`
+	Reviews Reviews `json:"items"`
 }
 
 func (r Review) toRepo() ReviewRepo {
