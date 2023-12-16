@@ -12,6 +12,8 @@ import (
 	"github.com/lib/pq"
 )
 
+const emptyDate = `0001-01-01`
+
 type Reviews []Review
 
 func (r Reviews) toRepo() []ReviewRepo {
@@ -140,7 +142,6 @@ func (p Product) toRepo() (ProductRepo, error) {
 	// Dates can be empty. If only one is present (like with cyberpunk 2077)
 	// set both dates to it. Otherwise just set zero value or db will cry about
 	// empty string date.
-	const emptyDate = `0001-01-01`
 	if p.ReleaseDate == "" && p.StoreReleaseDate == "" {
 		p.ReleaseDate, p.StoreReleaseDate = emptyDate, emptyDate
 	}
@@ -324,21 +325,18 @@ type Embedded struct {
 }
 
 func (r Review) toRepo() ReviewRepo {
-	date, err := time.Parse(r.Date, time.RFC3339)
-	if err != nil {
-		date = time.Time{}
-	}
-	creationDate, err := time.Parse(r.CreationDate, time.RFC3339)
-	if err != nil {
-		date = time.Time{}
-	}
-	internalDate, err := time.Parse(r.InternalUpdateDate, time.RFC3339)
-	if err != nil {
-		date = time.Time{}
-	}
 	links, err := toRepoLinks(r.Reviewer.Avatar.Links)
 	if err != nil {
 		log.Printf("WARN: Failed to convert links to repo: %v\n", err)
+	}
+	if r.Date == "" {
+		r.Date = emptyDate
+	}
+	if r.CreationDate == "" {
+		r.CreationDate = emptyDate
+	}
+	if r.InternalUpdateDate == "" {
+		r.InternalUpdateDate = emptyDate
 	}
 	return ReviewRepo{
 		ID:                 r.ID,
@@ -368,9 +366,9 @@ func (r Review) toRepo() ReviewRepo {
 		Labels:             pq.StringArray(r.Labels),
 		Downvotes:          r.Votes.Downvotes,
 		Upvotes:            r.Votes.Upvotes,
-		ReviewDate:         date,
-		CreationDate:       creationDate,
-		InternalUpdateDate: internalDate,
+		ReviewDate:         r.Date,
+		CreationDate:       r.CreationDate,
+		InternalUpdateDate: r.InternalUpdateDate,
 	}
 }
 
@@ -410,7 +408,7 @@ func toRepoLinks(respLinks any) (AvatarLinks, error) {
 }
 
 type ReviewRepo struct {
-	ID                 string         `json:"id" db:"review_id"`
+	ID                 string         `json:"id" db:"id"`
 	ProductID          string         `json:"productId" db:"product_id"`
 	RatingValue        int            `json:"rating" db:"rating_value"`
 	Title              string         `json:"title" db:"title"`
@@ -437,7 +435,7 @@ type ReviewRepo struct {
 	Labels             pq.StringArray `json:"labels" db:"labels"`
 	Downvotes          int            `json:"downvotes" db:"downvotes"`
 	Upvotes            int            `json:"upvotes" db:"upvotes"`
-	ReviewDate         time.Time      `json:"date" db:"review_date"`
-	CreationDate       time.Time      `json:"creationDate" db:"creation_date"`
-	InternalUpdateDate time.Time      `json:"internalUpdateDate" db:"internal_update_date"`
+	ReviewDate         string         `json:"date" db:"review_date"`
+	CreationDate       string         `json:"creationDate" db:"creation_date"`
+	InternalUpdateDate string         `json:"internalUpdateDate" db:"internal_update_date"`
 }

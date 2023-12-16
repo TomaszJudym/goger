@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -19,16 +18,19 @@ func main() {
 		log.Fatalf("Failed to connect db: %v", err)
 	}
 
+	defer func() {
+		if err = saveRunTimestamp(db); err != nil {
+			log.Fatalf("Failed to save run ts: %v", err)
+		}
+	}()
+
+	//	log.Printf("--- Clearing tables ---")
 	//	if err = clearTables(db); err != nil {
 	//		log.Fatalf("Failed to clear tables: %v", err)
 	//	}
 
 	if err = downloadAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
-	}
-
-	if err = saveRunTimestamp(db); err != nil {
-		log.Fatalf("Failed to save run ts: %v", err)
 	}
 }
 
@@ -60,10 +62,16 @@ func clearTables(db *sqlx.DB) error {
 	// Iterate over tables and delete records
 	for _, table := range tables {
 		query := fmt.Sprintf("DELETE FROM %s;", table)
-		_, err := db.Exec(query)
+		res, err := db.Exec(query)
 		if err != nil {
 			return fmt.Errorf("query: %s failed: %w", query, err)
 		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check rows affected by: %s table clear: %w",
+				table, err)
+		}
+		log.Printf("Cleared: %d rows from table: %s", affected, table)
 	}
 
 	return nil
@@ -75,32 +83,26 @@ func downloadAllGames(db *sqlx.DB) error {
 	page := 1
 	total := 0
 	for ; productsCount == pageSize; page++ {
+		// Get batch of games
 		resp, err := fetchGames(page, pageSize)
 		if err != nil {
 			return fmt.Errorf("failed to get page: %d with: %d games: %w", page, pageSize, err)
 		}
 
-		if err = insertToDB(db, resp); err != nil {
-			// Save file for debugging
-			b, werr := json.MarshalIndent(resp, "\t", " ")
-			if werr != nil {
-				return fmt.Errorf("failed to marshal resp: %v after insert err: %w", werr, err)
-			}
-			if werr = os.WriteFile("response.json", b, 0644); werr != nil {
-				return fmt.Errorf("failed to write resp file: %v after insert err: %w", werr, err)
-			}
-			return fmt.Errorf("failed to insert: %v", err)
-		}
-
 		productsCount = len(resp.Products)
 		total += productsCount
-
-		reviewsCount, err := downloadReviews(resp.gameIDsToTitles(), db)
-		if err != nil {
-			return fmt.Errorf("failed to download reviews on page: %d: %w", page, err)
+		// Save them to db
+		if err = insertToDB(db, resp); err != nil {
+			return fmt.Errorf("failed to insert page: %d of: %d games to db: %v",
+				page, productsCount, err)
 		}
-
-		log.Printf("Downloaded: %d reviews for games from page: %d\n", reviewsCount, page)
+		// TODO: Metrics
+		// For every game get reviews of this game
+		err = downloadReviews(resp.gameIDsToTitles(), db)
+		if err != nil {
+			return fmt.Errorf("failed to download reviews on games page: %d: %w",
+				page, err)
+		}
 	}
 
 	log.Printf("Total pages: %d\n"+
@@ -191,100 +193,90 @@ func insertBatch(db *sqlx.DB, products []ProductRepo) error {
 	log.Printf("Inserted: %d games in: %v\n", affectedRows, took)
 	l := len(products)
 	if affectedRows != int64(l) {
-		log.Printf("WARN: Inserted: %d/%d products from batch\n",
+		log.Printf("WARN: Inserted: %d/%d products from batch",
 			affectedRows, l)
 	}
 	return nil
 }
 
-func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) (int, error) {
-	// Fetch reviews for specific game
-	var total int
+func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
 	for gameID, title := range gameIDsToTitles {
-		// Get first page. Response contains total reviews and pages count
-		revsFetchStart := time.Now()
-
-		count, err := downloadGameReviews(db, gameID, title)
+		inDB, inPage, err := reviewsState(db, gameID)
 		if err != nil {
-			return -1, fmt.Errorf("failed to download: %s reviews: %w", title, err)
+			return fmt.Errorf("failed to get reviews state of: %s: %w",
+				title, err)
 		}
-		total += count
 
-		revsFetchTook := time.Since(revsFetchStart)
+		if inPage == 0 {
+			log.Printf("No reviews for: %s - skipping", title)
+			continue
+		}
 
-		log.Printf("Fetched in total: %d reviews of: %s in: %v\n",
-			count, title, revsFetchTook)
+		if inDB >= inPage {
+			log.Printf("Got %d/%d reviews of: %s - skipping", inDB, inPage, title)
+			continue
+		}
+		// Specify how many reviews are in db
+		// to skip their download.
+		log.Printf("%s has: %d onPage and: %d in DB to skip",
+			title, inPage, inDB)
+		err = downloadGameReviews(db, gameID, title, inDB, inPage)
+		if err != nil {
+			return fmt.Errorf("failed to download: %s reviews: %w", title, err)
+		}
 	}
-	return total, nil
+	return nil
 }
 
-func downloadGameReviews(db *sqlx.DB, gameID, title string) (int, error) {
-	const batchSize = 50
-	countForGame := 0
-	resp, err := fetchReviews(gameID, 1, batchSize)
+func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
+	// Just single record. Every page contains pages and all records count.
+	resp, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
-		return -1, fmt.Errorf("failed to fetch first page of reviews "+
-			"for : %s: %s: %w", gameID, title, err)
-	}
-
-	count := len(resp.Embedded.Reviews)
-	if count == 0 {
-		return 0, nil
-	}
-
-	countForGame += count
-	if err = insertReviews(db, resp.Embedded.Reviews.toRepo()); err != nil {
-		return -1, fmt.Errorf("failed to insert page: 1 of: %d reviews "+
-			"of: %s to db: %w", count, title, err)
+		return -1, -1, fmt.Errorf("failed to fetch single review "+
+			"for : %s: %w", gameID, err)
 	}
 
 	// Now check how many reviews are in DB vs how many are on gog page.
-	onPage := resp.ReviewCount
-	inDB, err := countReviews(db)
+	inDB, err = countReviews(db, gameID)
 	if err != nil {
-		return -1, fmt.Errorf("failed to count reviews in db: %w", err)
-	}
-	// We got all or even more (maybe something deleted by gog) than on page.
-	if onPage <= inDB {
-		// TODO: This check should be outside this function.
-		log.Printf("Got all %d reviews for: %s, skipping\n",
-			resp.ReviewCount, title)
-		return resp.ReviewCount, nil
+		return -1, -1, fmt.Errorf("failed to count reviews in db: %w", err)
 	}
 
-	// Reviews are present on gog page in chrono order. Let's check oldest page to
-	// get and continue from there.
-	missing := onPage - inDB
-	missingPages, remainder := missing/batchSize, missing%batchSize // ceil
-	if remainder > 0 {
+	return inDB, resp.ReviewCount, nil
+}
+
+func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) error {
+	const pageSize = 100
+	// Reviews are present on gog page in chrono order.
+	// Donwload from last page.
+	// Got number of reviews to skip and total number of reviews.
+	missingPages, remainder := total/pageSize, total%pageSize // ceil
+	if remainder != 0 {
 		missingPages++
 	}
-	startPage := resp.Pages - missingPages
+	// How many pages there are and how many to skip.
+	missingPages -= skip / pageSize
 
-	log.Printf("Fetching %d missing pages out of: %d for: %s",
-		missingPages, resp.Pages, title)
-
-	for i := startPage; i > 1; i-- {
+	for i := missingPages; i > 0; i-- {
+		log.Printf("Fetching reviews of: %s page: %d", title, i)
 		start := time.Now()
-		resp, err := fetchReviews(gameID, i, batchSize)
+		resp, err := fetchReviews(gameID, i, pageSize)
 		if err != nil {
-			return -1, fmt.Errorf("failed to fetch reviews for game: %s: %s: %w",
+			return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
 				gameID, title, err)
 		}
 		took := time.Since(start)
 
 		reviews := resp.Embedded.Reviews
-		count := len(reviews)
-		countForGame += count
 		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
-			countForGame, resp.ReviewCount, i, resp.Pages, title, took)
+			len(reviews), resp.ReviewCount, i, resp.Pages, title, took)
 
 		if err = insertReviews(db, reviews.toRepo()); err != nil {
-			return -1, fmt.Errorf("failed to insert page: %d of: %d reviews "+
-				"of: %s to db: %w", i, count, title, err)
+			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
+				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
 		}
 	}
-	return countForGame, nil
+	return nil
 }
 
 func fetchReviews(gameID string, page, limit int) (ReviewsResp, error) {
@@ -328,7 +320,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		took := time.Since(start)
 
 		// Incremental backoff
-		sleep := (time.Duration(i) * 10 * time.Second) + 30*time.Second
+		sleep := time.Duration(i) * 3 * time.Second
 		fmt.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
 			"Retrying in %v...\n", i, took, http.StatusText(resp.StatusCode),
 			resp.StatusCode, sleep)
@@ -368,8 +360,9 @@ func insertReviews(db *sqlx.DB, reviews []ReviewRepo) error {
 	return nil
 }
 
-func countReviews(db *sqlx.DB) (int, error) {
-	rows, err := db.Query(`SELECT COUNT(id) FROM reviews`)
+func countReviews(db *sqlx.DB, gameID string) (int, error) {
+	const query = `SELECT COUNT(id) FROM reviews where product_id = $1`
+	rows, err := db.Query(query, gameID)
 	if err != nil {
 		return -1, fmt.Errorf("failed to exec reviews count %w", err)
 	}
