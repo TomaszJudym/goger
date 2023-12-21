@@ -84,3 +84,15 @@ So instead of downloading from start:
 Get first page
 If nothing - no reviews.
 Otherwise reverse loop, got pages number after all
+
+##########################################
+
+Add Prometheus and grafana.
+Get:
+- resources
+- API response times
+- queries times
+- fetching games times
+- games count
+- reviews count
+- db usage
