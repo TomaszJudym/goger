@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -58,12 +59,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
+	start := time.Now()
 	gamesCount, err := goger.CountGames(db)
+	took := time.Since(start)
 	if err != nil {
 		log.Printf("Failed to count games: %v", err)
 		http.Error(w, "Internal server Error", http.StatusInternalServerError)
 		return
 	}
+	// TODO: Why logs from here are shown twice? Both times with GET?
+	log.Printf("Counted: %d games in: %v", gamesCount, took)
 
 	pagesCount := gamesCount / 50
 
@@ -72,11 +77,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch games with reviews count from the database
+	start = time.Now()
 	games, err := getGamesWithReviews((page-1)*50, 50)
+	took = time.Since(start)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	var revs int
+	for _, g := range games {
+		revs += g.ReviewsCount
+	}
+	log.Printf("Fetched page: %d od: %d games with: %d reviews in in: %v",
+		page, gamesCount, revs, took)
 
 	// Render the HTML template
 	renderTemplate(w, Page{Games: games, TotalPages: pagesCount})
