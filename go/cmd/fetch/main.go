@@ -358,7 +358,7 @@ func countReviews(db *sqlx.DB, gameID string) (int, error) {
 	var count int
 	for rows.Next() {
 		if err = rows.Scan(&count); err != nil {
-			return -1, fmt.Errorf("failed to scan count: %w", err)
+			return -1, fmt.Errorf("failed to scan reviews count: %w", err)
 		}
 	}
 

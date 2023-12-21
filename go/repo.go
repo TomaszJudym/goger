@@ -26,3 +26,21 @@ func ConnectDB() (*sqlx.DB, error) {
 	}
 	return db, nil
 }
+
+func CountGames(db *sqlx.DB) (int, error) {
+	const query = `SELECT COUNT(id) FROM games`
+	rows, err := db.Query(query)
+	if err != nil {
+		return -1, fmt.Errorf("failed to exec games count %w", err)
+	}
+	defer rows.Close()
+
+	var count int
+	for rows.Next() {
+		if err = rows.Scan(&count); err != nil {
+			return -1, fmt.Errorf("failed to scan games count: %w", err)
+		}
+	}
+
+	return count, nil
+}

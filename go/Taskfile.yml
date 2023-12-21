@@ -4,5 +4,5 @@ tasks:
   run:
     cmds:
       - rm -f output.log 2> /dev/null
-      - docker-compose down --volumes
+      - docker-compose down
       - docker-compose up --build 2>&1 | tee output.log

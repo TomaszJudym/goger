@@ -20,7 +20,8 @@ type Game struct {
 
 // Page represents the data to be rendered on the webpage.
 type Page struct {
-	Games []Game
+	Games      []Game
+	TotalPages int
 }
 
 var (
@@ -57,6 +58,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
+	gamesCount, err := goger.CountGames(db)
+	if err != nil {
+		log.Printf("Failed to count games: %v", err)
+		http.Error(w, "Internal server Error", http.StatusInternalServerError)
+		return
+	}
+
+	pagesCount := gamesCount / 50
+
+	if page > pagesCount {
+		page = 1
+	}
+
 	// Fetch games with reviews count from the database
 	games, err := getGamesWithReviews((page-1)*50, 50)
 	if err != nil {
@@ -65,7 +79,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render the HTML template
-	renderTemplate(w, Page{Games: games})
+	renderTemplate(w, Page{Games: games, TotalPages: pagesCount})
 }
 
 func getGamesWithReviews(offset, limit int) ([]Game, error) {
@@ -96,16 +110,27 @@ func getGamesWithReviews(offset, limit int) ([]Game, error) {
 	return games, nil
 }
 
+// TODO: Finish pagination. Display only +/- 30 (?) numbers
+func seq(n int) []int {
+	result := make([]int, n)
+	for i := range result {
+		result[i] = i + 1
+	}
+	return result
+}
+
 func renderTemplate(w http.ResponseWriter, page Page) {
-	tmpl, err := template.New("index.html").ParseFiles("templates/index.html")
+	tmpl, err := template.New("index.html").
+		Funcs(template.FuncMap{"seq": seq}).
+		ParseFiles("templates/index.html")
 	if err != nil {
+		log.Printf("Failed to parse template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	// Execute the template and pass the data to it
-	err = tmpl.Execute(w, page)
-	if err != nil {
+	if err = tmpl.Execute(w, page); err != nil {
+		log.Printf("Failed to execute template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
