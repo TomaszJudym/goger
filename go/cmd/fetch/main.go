@@ -208,6 +208,8 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
 	return nil
 }
 
+// TODO: Instead of per game - fetch games in batches. 1k at once.
+// Try also fetching count in parallel
 func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
 	// Just single record. Every page contains pages and all records count.
 	resp, err := fetchReviews(gameID, 1, 1)
