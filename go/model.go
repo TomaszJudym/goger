@@ -1,4 +1,4 @@
-package main
+package goger
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ const emptyDate = `0001-01-01`
 
 type Reviews []Review
 
-func (r Reviews) toRepo() []ReviewRepo {
+func (r Reviews) ToRepo() []ReviewRepo {
 	ret := make([]ReviewRepo, 0, len(r))
 	for _, rev := range r {
 		ret = append(ret, rev.toRepo())
@@ -30,7 +30,7 @@ type CatalogResp struct {
 	Products     []Product `json:"products"`
 }
 
-func (c CatalogResp) gameIDsToTitles() map[string]string {
+func (c CatalogResp) GameIDsToTitles() map[string]string {
 	ret := make(map[string]string, len(c.Products))
 	for _, p := range c.Products {
 		ret[p.ID] = p.Title
@@ -111,7 +111,7 @@ type ProductRepo struct {
 }
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
-func (p Product) toRepo() (ProductRepo, error) {
+func (p Product) ToRepo() (ProductRepo, error) {
 	// Prices can arrive empty for some reason
 	if p.Price.Final == "" {
 		p.Price.Final = "0.0"
@@ -338,9 +338,14 @@ func (r Review) toRepo() ReviewRepo {
 	if r.InternalUpdateDate == "" {
 		r.InternalUpdateDate = emptyDate
 	}
+	prodID, err := strconv.Atoi(r.ProductID)
+	if err != nil {
+		log.Printf("WARN: Failed to convert product_id of review: %s: "+
+			"%s to int: %v", r.ID, r.ProductID, err)
+	}
 	return ReviewRepo{
 		ID:                 r.ID,
-		ProductID:          r.ProductID,
+		ProductID:          prodID,
 		RatingValue:        r.Rating.Value,
 		Title:              r.Content.Title,
 		Description:        r.Content.Description,
@@ -409,7 +414,7 @@ func toRepoLinks(respLinks any) (AvatarLinks, error) {
 
 type ReviewRepo struct {
 	ID                 string         `json:"id" db:"id"`
-	ProductID          string         `json:"productId" db:"product_id"`
+	ProductID          int            `json:"productId" db:"product_id"`
 	RatingValue        int            `json:"rating" db:"rating_value"`
 	Title              string         `json:"title" db:"title"`
 	Description        string         `json:"description" db:"description"`

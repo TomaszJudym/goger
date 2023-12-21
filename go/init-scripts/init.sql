@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS last_run (
 -- Store reviews for all games
 CREATE TABLE reviews (
     id VARCHAR(255) PRIMARY KEY,
-    product_id VARCHAR(255),
+    product_id INT,
     rating_value INT,
     title VARCHAR(255),
     description TEXT,

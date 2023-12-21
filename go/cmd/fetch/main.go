@@ -10,10 +10,11 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
+	"github.com/tomaszjudym/goger"
 )
 
 func main() {
-	db, err := connectDB()
+	db, err := goger.ConnectDB()
 	if err != nil {
 		log.Fatalf("Failed to connect db: %v", err)
 	}
@@ -32,27 +33,6 @@ func main() {
 	if err = downloadAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
 	}
-}
-
-func connectDB() (*sqlx.DB, error) {
-	dbHost := "pg"
-	dbPort := "5432"
-	dbUser := "goger"
-	dbPassword := "goger"
-	dbName := "goger"
-
-	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
-		"dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	db, err := sqlx.Open("postgres", connectionString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open pg connection: %w", err)
-	}
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping pg: %w", err)
-	}
-	return db, nil
 }
 
 func clearTables(db *sqlx.DB) error {
@@ -98,7 +78,7 @@ func downloadAllGames(db *sqlx.DB) error {
 		}
 		// TODO: Metrics
 		// For every game get reviews of this game
-		err = downloadReviews(resp.gameIDsToTitles(), db)
+		err = downloadReviews(resp.GameIDsToTitles(), db)
 		if err != nil {
 			return fmt.Errorf("failed to download reviews on games page: %d: %w",
 				page, err)
@@ -111,7 +91,7 @@ func downloadAllGames(db *sqlx.DB) error {
 	return nil
 }
 
-func fetchGames(page, count int) (CatalogResp, error) {
+func fetchGames(page, count int) (goger.CatalogResp, error) {
 	// After trial and error limit > 2000 gives 500 HTTP error code
 	// Update: with 1500 also can give error. Need to add backoff
 	// with less and less number of records in request
@@ -120,29 +100,29 @@ func fetchGames(page, count int) (CatalogResp, error) {
 	start := time.Now()
 	response, err := http.Get(url)
 	if err != nil {
-		return CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
+		return goger.CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
 	}
 	took := time.Since(start)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return CatalogResp{}, fmt.Errorf("request failed with status code: %d",
+		return goger.CatalogResp{}, fmt.Errorf("request failed with status code: %d",
 			response.StatusCode)
 	}
 
-	var resp CatalogResp
+	var resp goger.CatalogResp
 	if err = json.NewDecoder(response.Body).Decode(&resp); err != nil {
-		return CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
+		return goger.CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	log.Printf("Fetched: %d games on page: %d took: %v\n", len(resp.Products), page, took)
 	return resp, nil
 }
 
-func insertToDB(db *sqlx.DB, resp CatalogResp) error {
-	pr := make([]ProductRepo, 0, len(resp.Products))
+func insertToDB(db *sqlx.DB, resp goger.CatalogResp) error {
+	pr := make([]goger.ProductRepo, 0, len(resp.Products))
 	for _, p := range resp.Products {
-		repoProduct, err := p.toRepo()
+		repoProduct, err := p.ToRepo()
 		if err != nil {
 			return fmt.Errorf("failed to convert: %s to repo: %w", p.Title, err)
 		}
@@ -169,7 +149,7 @@ func connect() (*sqlx.DB, error) {
 	return sqlx.Open("postgres", connectionString)
 }
 
-func insertBatch(db *sqlx.DB, products []ProductRepo) error {
+func insertBatch(db *sqlx.DB, products []goger.ProductRepo) error {
 	builder := goqu.Insert("games").Rows(products).
 		OnConflict(goqu.DoNothing())
 
@@ -246,7 +226,8 @@ func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
 }
 
 func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) error {
-	const pageSize = 100
+	// TODO: Make configurable
+	const pageSize = 200
 	// Reviews are present on gog page in chrono order.
 	// Donwload from last page.
 	// Got number of reviews to skip and total number of reviews.
@@ -271,7 +252,7 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
 			len(reviews), resp.ReviewCount, i, resp.Pages, title, took)
 
-		if err = insertReviews(db, reviews.toRepo()); err != nil {
+		if err = insertReviews(db, reviews.ToRepo()); err != nil {
 			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
 				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
 		}
@@ -279,27 +260,27 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 	return nil
 }
 
-func fetchReviews(gameID string, page, limit int) (ReviewsResp, error) {
+func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, limit)
 	resp, err := getWithBackoff(url, 9999)
 	if err != nil {
 		// What gog is angry about?
-		return ReviewsResp{}, fmt.Errorf("failed to get: %s: %w", url, err)
+		return goger.ReviewsResp{}, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ReviewsResp{}, fmt.Errorf("failed to read page: %d resp body: %w",
+		return goger.ReviewsResp{}, fmt.Errorf("failed to read page: %d resp body: %w",
 			page, err)
 	}
 
-	var data ReviewsResp
+	var data goger.ReviewsResp
 	err = json.Unmarshal(b, &data)
 	if err != nil {
-		return ReviewsResp{}, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
+		return goger.ReviewsResp{}, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
 			page, string(b), err)
 	}
 
@@ -311,26 +292,32 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 		resp *http.Response
 		err  error
 	)
-	for i := 0; i < maxRetries; i++ {
+	for i := 1; i < maxRetries; i++ {
 		start := time.Now()
 		resp, err = http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			break
 		}
 		took := time.Since(start)
-
 		// Incremental backoff
 		sleep := time.Duration(i) * 3 * time.Second
-		fmt.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
-			"Retrying in %v...\n", i, took, http.StatusText(resp.StatusCode),
-			resp.StatusCode, sleep)
+		if err != nil {
+			log.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
+				"Retrying in %v...", i, took, http.StatusText(resp.StatusCode),
+				resp.StatusCode, sleep)
+		}
+		if resp != nil {
+			log.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
+				"Retrying in %v...", i, took, http.StatusText(resp.StatusCode),
+				resp.StatusCode, sleep)
+		}
 		time.Sleep(sleep)
 	}
 
 	return resp, err
 }
 
-func insertReviews(db *sqlx.DB, reviews []ReviewRepo) error {
+func insertReviews(db *sqlx.DB, reviews []goger.ReviewRepo) error {
 	builder := goqu.Insert("reviews").Rows(reviews).
 		OnConflict(goqu.DoNothing())
 

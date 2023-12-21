@@ -22,12 +22,27 @@ services:
       retries: 5
       start_period: 2s 
 
-  goger-app:
-    build: .
+  fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: fetcher
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - goger-network
+
+  fronter:
+    build:
+      context: .
+      dockerfile: Dockerfile-front
+    container_name: fronter
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
     networks:
       - goger-network
 
