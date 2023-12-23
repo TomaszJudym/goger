@@ -4,7 +4,7 @@ services:
     image: postgres:latest
     container_name: pg
     environment:
-      PGUSER: goger # for pg_isready
+      PGUSER: goger
       POSTGRES_DB: goger
       POSTGRES_USER: goger
       POSTGRES_PASSWORD: goger
