@@ -205,7 +205,6 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 	for i := missingPages; i > 0; i-- {
 		page := i
 		group.Go(func() error {
-			log.Printf("Fetching reviews of: %s page: %d", title, page)
 			start := time.Now()
 			resp, err := fetchReviews(gameID, page, pageSize)
 			if err != nil {
