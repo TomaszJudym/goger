@@ -25,36 +25,9 @@ func main() {
 		}
 	}()
 
-	//	log.Printf("--- Clearing tables ---")
-	//	if err = clearTables(db); err != nil {
-	//		log.Fatalf("Failed to clear tables: %v", err)
-	//	}
-
 	if err = downloadAllGames(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
 	}
-}
-
-func clearTables(db *sqlx.DB) error {
-	// Tables to delete records from
-	tables := []string{"games", "reviews"}
-
-	// Iterate over tables and delete records
-	for _, table := range tables {
-		query := fmt.Sprintf("DELETE FROM %s;", table)
-		res, err := db.Exec(query)
-		if err != nil {
-			return fmt.Errorf("query: %s failed: %w", query, err)
-		}
-		affected, err := res.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to check rows affected by: %s table clear: %w",
-				table, err)
-		}
-		log.Printf("Cleared: %d rows from table: %s", affected, table)
-	}
-
-	return nil
 }
 
 func downloadAllGames(db *sqlx.DB) error {
