@@ -46,7 +46,7 @@ func downloadAllGames(db *sqlx.DB) error {
 		total += productsCount
 		// Save them to db
 		if err = insertToDB(db, resp); err != nil {
-			return fmt.Errorf("failed to insert page: %d of: %d games to db: %v",
+			return fmt.Errorf("failed to insert page: %d of: %d games to db: %w",
 				page, productsCount, err)
 		}
 		// TODO: Metrics
@@ -93,17 +93,12 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 }
 
 func insertToDB(db *sqlx.DB, resp goger.CatalogResp) error {
-	pr := make([]goger.ProductRepo, 0, len(resp.Products))
-	for _, p := range resp.Products {
-		repoProduct, err := p.ToRepo()
-		if err != nil {
-			return fmt.Errorf("failed to convert: %s to repo: %w", p.Title, err)
-		}
-		pr = append(pr, repoProduct)
+	pr, err := resp.Products.ToRepo()
+	if err != nil {
+		return fmt.Errorf("failed to convert response products to repo: %w", err)
 	}
 
 	if err := insertBatch(db, pr); err != nil {
-		fmt.Printf("ERROR: %v type: %T\n", err, err)
 		return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 	}
 	return nil
@@ -143,12 +138,8 @@ func insertBatch(db *sqlx.DB, products []goger.ProductRepo) error {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	log.Printf("Inserted: %d games in: %v\n", affectedRows, took)
-	l := len(products)
-	if affectedRows != int64(l) {
-		log.Printf("WARN: Inserted: %d/%d products from batch",
-			affectedRows, l)
-	}
+	log.Printf("Inserted: %d/%d games from batch in: %v\n",
+		affectedRows, len(products), took)
 	return nil
 }
 

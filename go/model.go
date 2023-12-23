@@ -15,6 +15,7 @@ import (
 const emptyDate = `0001-01-01`
 
 type Reviews []Review
+type Products []Product
 
 func (r Reviews) ToRepo() []ReviewRepo {
 	ret := make([]ReviewRepo, 0, len(r))
@@ -24,10 +25,23 @@ func (r Reviews) ToRepo() []ReviewRepo {
 	return ret
 }
 
+func (p Products) ToRepo() ([]ProductRepo, error) {
+	ret := make([]ProductRepo, 0, len(p))
+	for _, prod := range p {
+		repoProd, err := prod.ToRepo()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert: %s to repo: %w",
+				prod.Title, err)
+		}
+		ret = append(ret, repoProd)
+	}
+	return ret, nil
+}
+
 type CatalogResp struct {
-	Pages        int       `json:"pages"`
-	ProductCount int       `json:"productCount"`
-	Products     []Product `json:"products"`
+	Pages        int      `json:"pages"`
+	ProductCount int      `json:"productCount"`
+	Products     Products `json:"products"`
 }
 
 func (c CatalogResp) GameIDsToTitles() map[string]string {
