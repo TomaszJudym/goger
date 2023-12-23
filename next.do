@@ -96,3 +96,8 @@ Get:
 - games count
 - reviews count
 - db usage
+
+- UI:
+  Add sorting buttons per ID, title and Reviews count.
+  Add Search by title. Check if postgres have text search possible.
+  With stuff like mispelling etc.

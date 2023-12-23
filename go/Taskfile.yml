@@ -6,3 +6,11 @@ tasks:
       - rm -f output.log 2> /dev/null
       - docker-compose down
       - docker-compose up --build 2>&1 | tee output.log
+  backup:
+    cmds:
+      - rm -rf backups
+      - mkdir backups
+      - pg_dump --host localhost --port 5432 --username goger --format plain --file backups/games --table public.games goger
+      - pg_dump --host localhost --port 5432 --username goger --format plain --file backups/reviews --table public.reviews goger
+      - lrzip -z backups/reviews backups/games
+      - rm -f backups/games backups/reviews
