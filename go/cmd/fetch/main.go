@@ -11,6 +11,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
 	"github.com/tomaszjudym/goger"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -150,14 +151,8 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
 			return fmt.Errorf("failed to get reviews state of: %s: %w",
 				title, err)
 		}
-
-		if inPage == 0 {
-			log.Printf("No reviews for: %s - skipping", title)
-			continue
-		}
-
-		if inDB >= inPage {
-			log.Printf("Got %d/%d reviews of: %s - skipping", inDB, inPage, title)
+		// Nothing to download or already have everything downloaded
+		if inPage == 0 || inDB >= inPage {
 			continue
 		}
 		// Specify how many reviews are in db
@@ -204,26 +199,33 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 	// How many pages there are and how many to skip.
 	missingPages -= skip / pageSize
 
+	var group errgroup.Group
+	group.SetLimit(2)
+	// TODO: Split into 2 workers
 	for i := missingPages; i > 0; i-- {
-		log.Printf("Fetching reviews of: %s page: %d", title, i)
-		start := time.Now()
-		resp, err := fetchReviews(gameID, i, pageSize)
-		if err != nil {
-			return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
-				gameID, title, err)
-		}
-		took := time.Since(start)
+		page := i
+		group.Go(func() error {
+			log.Printf("Fetching reviews of: %s page: %d", title, page)
+			start := time.Now()
+			resp, err := fetchReviews(gameID, page, pageSize)
+			if err != nil {
+				return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
+					gameID, title, err)
+			}
+			took := time.Since(start)
 
-		reviews := resp.Embedded.Reviews
-		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
-			len(reviews), resp.ReviewCount, i, resp.Pages, title, took)
+			reviews := resp.Embedded.Reviews
+			log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
+				len(reviews), resp.ReviewCount, page, resp.Pages, title, took)
 
-		if err = insertReviews(db, reviews.ToRepo()); err != nil {
-			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
-				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
-		}
+			if err = insertReviews(db, reviews.ToRepo()); err != nil {
+				return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
+					"of: %s to db: %w", page, resp.Pages, len(reviews), title, err)
+			}
+			return nil
+		})
 	}
-	return nil
+	return group.Wait()
 }
 
 func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, error) {
