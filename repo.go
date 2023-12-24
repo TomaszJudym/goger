@@ -29,9 +29,15 @@ func ConnectDB() (*sqlx.DB, error) {
 
 func CountGames(db *sqlx.DB) (int, error) {
 	const query = `SELECT COUNT(id) FROM games`
-	rows, err := db.Query(query)
+	stmt, err := db.Prepare(query)
 	if err != nil {
-		return -1, fmt.Errorf("failed to exec games count %w", err)
+		return -1, fmt.Errorf("failed to prepare games count stmt: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return -1, fmt.Errorf("failed to exec games count: %w", err)
 	}
 	defer rows.Close()
 

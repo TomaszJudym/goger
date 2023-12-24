@@ -1,5 +1,5 @@
-# Python virtual environment
-.venv
-
 # Postgres
-pg-data
+postgres-data
+# Local development
+backups
+output.log

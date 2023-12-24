@@ -101,3 +101,10 @@ Get:
   Add sorting buttons per ID, title and Reviews count.
   Add Search by title. Check if postgres have text search possible.
   With stuff like mispelling etc.
+
+- PG
+  Consumes too much RAM.
+  Play with config to figure out to limit it to ~100MB
+
+- Queries are slow with simple pagination, need indexes.
+- put reviews count in games table instead of counting it every time

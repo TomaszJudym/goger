@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -38,15 +39,9 @@ func init() {
 }
 
 func main() {
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/games", handler)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("chuj"))
-		if err != nil {
-			log.Printf("ERROR: FAILED TO WRITE CHUJ: %v", err)
-		}
-	})
-
+	http.HandleFunc("/favicon.ico", faviconHandler)
 	const port = "8080"
 	log.Printf("Server running on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -67,7 +62,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server Error", http.StatusInternalServerError)
 		return
 	}
-	// TODO: Why logs from here are shown twice? Both times with GET?
 	log.Printf("Counted: %d games in: %v", gamesCount, took)
 
 	pagesCount := gamesCount / 50
@@ -88,23 +82,31 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	for _, g := range games {
 		revs += g.ReviewsCount
 	}
-	log.Printf("Fetched page: %d od: %d games with: %d reviews in in: %v",
+	log.Printf("Fetched page: %d of: %d games with: %d reviews in in: %v",
 		page, gamesCount, revs, took)
 
-	// Render the HTML template
 	renderTemplate(w, Page{Games: games, TotalPages: pagesCount})
 }
 
+func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/favicon.png")
+}
+
 func getGamesWithReviews(offset, limit int) ([]Game, error) {
-	rows, err := db.Query(`
+	const query = `
 		SELECT g.id, g.title, COUNT(r.id) AS reviews_count
 		FROM games g
 		LEFT JOIN reviews r ON g.id = r.product_id
 		GROUP BY g.id, g.title
 		ORDER BY reviews_count DESC, g.id
 		OFFSET $1
-		LIMIT $2
-	`, offset, limit)
+		LIMIT $2`
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+	rows, err := stmt.Query(offset, limit)
 	if err != nil {
 		return nil, err
 	}

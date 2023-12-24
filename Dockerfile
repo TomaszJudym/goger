@@ -1,17 +1,17 @@
-FROM selenium/standalone-chrome:114.0-chromedriver-114.0
+FROM golang:1.21.3-alpine3.18 AS binary-builder
+RUN apk update && apk upgrade
+# && apk --update add upx
+WORKDIR /builder
+COPY go.mod go.sum *.go cmd/ ./
+RUN go mod download
+# For development there's no need for packer
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+  -ldflags='-w -s -extldflags "-static"' -a \
+  -o app                                    \
+  fetch/main.go
+# && upx -9 app
 
-USER root
-
-RUN apt update \
-    && apt install -y python3-pip 
- 
-# send logs straight to terminal
-ENV PYTHONUNBUFFERED 1
-# set display port to avoid crash
-ENV DISPLAY=:99
-
-# INSTALL PYTHON DEPS
-COPY requirements.txt *.py /app/
-RUN pip3 install -r /app/requirements.txt
-
-CMD ["python3", "/app/get-gog-games.py"]
+FROM gcr.io/distroless/static
+WORKDIR /app
+COPY --from=binary-builder --chown=nonroot:nonroot /builder/app .
+ENTRYPOINT ["./app"]

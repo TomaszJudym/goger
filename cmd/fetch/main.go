@@ -145,24 +145,31 @@ func insertBatch(db *sqlx.DB, products []goger.ProductRepo) error {
 }
 
 func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
+	var group errgroup.Group
+	group.SetLimit(5)
 	for gameID, title := range gameIDsToTitles {
-		inDB, inPage, err := reviewsState(db, gameID)
-		if err != nil {
-			return fmt.Errorf("failed to get reviews state of: %s: %w",
-				title, err)
-		}
-		// Nothing to download or already have everything downloaded
-		if inPage == 0 || inDB >= inPage {
-			continue
-		}
-		// Specify how many reviews are in db
-		// to skip their download.
-		log.Printf("%s has: %d onPage and: %d in DB to skip",
-			title, inPage, inDB)
-		err = downloadGameReviews(db, gameID, title, inDB, inPage)
-		if err != nil {
-			return fmt.Errorf("failed to download: %s reviews: %w", title, err)
-		}
+		inGameID := gameID
+		inTitle := title
+		group.Go(func() error {
+			inDB, inPage, err := reviewsState(db, inGameID)
+			if err != nil {
+				return fmt.Errorf("failed to get reviews state of: %s: %w",
+					inTitle, err)
+			}
+			// Nothing to download or already have everything downloaded
+			if inPage == 0 || inDB >= inPage {
+				return nil
+			}
+			// Specify how many reviews are in db
+			// to skip their download.
+			log.Printf("%s has: %d onPage and: %d in DB to skip",
+				inTitle, inPage, inDB)
+			err = downloadGameReviews(db, inGameID, inTitle, inDB, inPage)
+			if err != nil {
+				return fmt.Errorf("failed to download: %s reviews: %w", inTitle, err)
+			}
+			return nil
+		})
 	}
 	return nil
 }
@@ -200,7 +207,7 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 	missingPages -= skip / pageSize
 
 	var group errgroup.Group
-	group.SetLimit(2)
+	group.SetLimit(5)
 	// TODO: Split into 2 workers
 	for i := missingPages; i > 0; i-- {
 		page := i
@@ -305,27 +312,29 @@ func insertReviews(db *sqlx.DB, reviews []goger.ReviewRepo) error {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	log.Printf("Inserted: %d reviews in: %v\n", affectedRows, took)
-	l := len(reviews)
-	if affectedRows != int64(l) {
-		log.Printf("WARN: Inserted: %d/%d reviews from batch\n",
-			affectedRows, l)
-	}
+	log.Printf("Inserted: %d/%d reviews from batch in: %v\n",
+		affectedRows, len(reviews), took)
 	return nil
 }
 
 func countReviews(db *sqlx.DB, gameID string) (int, error) {
 	const query = `SELECT COUNT(id) FROM reviews where product_id = $1`
-	rows, err := db.Query(query, gameID)
+	stmt, err := db.Prepare(query)
 	if err != nil {
-		return -1, fmt.Errorf("failed to exec reviews count %w", err)
+		return -1, fmt.Errorf("failed to prepare stmt: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(gameID)
+	if err != nil {
+		return -1, fmt.Errorf("failed to exec: %w", err)
 	}
 	defer rows.Close()
 
 	var count int
 	for rows.Next() {
 		if err = rows.Scan(&count); err != nil {
-			return -1, fmt.Errorf("failed to scan reviews count: %w", err)
+			return -1, fmt.Errorf("failed to scan: %w", err)
 		}
 	}
 
