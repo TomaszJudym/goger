@@ -96,9 +96,10 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) error {
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
-	log.Printf("Inserted: %d/%d games from batch in: %v\n",
-		affectedRows, len(games), took)
+	if affectedRows != 0 {
+		log.Printf("Inserted: %d/%d games from batch in: %v\n",
+			affectedRows, len(games), took)
+	}
 	return nil
 }
 
@@ -120,9 +121,10 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-
-	log.Printf("Inserted: %d/%d reviews from batch in: %v\n",
-		affectedRows, len(reviews), took)
+	if affectedRows != 0 {
+		log.Printf("Inserted: %d/%d reviews from batch in: %v\n",
+			affectedRows, len(reviews), took)
+	}
 	return nil
 }
 
