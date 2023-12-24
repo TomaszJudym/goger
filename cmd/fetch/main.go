@@ -8,20 +8,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/doug-martin/goqu/v9"
-	"github.com/jmoiron/sqlx"
 	"github.com/tomaszjudym/goger"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
-	db, err := goger.ConnectDB()
+	db, err := goger.NewRepo()
 	if err != nil {
-		log.Fatalf("Failed to connect db: %v", err)
+		log.Fatalf("failed to create repo: %v", err)
 	}
 
 	defer func() {
-		if err = saveRunTimestamp(db); err != nil {
+		if err = db.SaveNow(); err != nil {
 			log.Fatalf("Failed to save run ts: %v", err)
 		}
 	}()
@@ -31,7 +29,7 @@ func main() {
 	}
 }
 
-func downloadAllGames(db *sqlx.DB) error {
+func downloadAllGames(db goger.Repo) error {
 	const pageSize = 1000
 	productsCount := 1000
 	page := 1
@@ -52,7 +50,7 @@ func downloadAllGames(db *sqlx.DB) error {
 		}
 		// TODO: Metrics
 		// For every game get reviews of this game
-		err = downloadReviews(resp.GameIDsToTitles(), db)
+		err = downloadReviews(db, resp.GameIDsToTitles())
 		if err != nil {
 			return fmt.Errorf("failed to download reviews on games page: %d: %w",
 				page, err)
@@ -93,58 +91,19 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	return resp, nil
 }
 
-func insertToDB(db *sqlx.DB, resp goger.CatalogResp) error {
+func insertToDB(repo goger.Repo, resp goger.CatalogResp) error {
 	pr, err := resp.Products.ToRepo()
 	if err != nil {
 		return fmt.Errorf("failed to convert response products to repo: %w", err)
 	}
 
-	if err := insertBatch(db, pr); err != nil {
+	if repo.CreateGames(pr); err != nil {
 		return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 	}
 	return nil
 }
 
-func connect() (*sqlx.DB, error) {
-	dbHost := "pg"
-	dbPort := "5432"
-	dbUser := "goger"
-	dbPassword := "goger"
-	dbName := "goger"
-
-	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
-		"dbname=%s sslmode=disable", dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	return sqlx.Open("postgres", connectionString)
-}
-
-func insertBatch(db *sqlx.DB, products []goger.ProductRepo) error {
-	builder := goqu.Insert("games").Rows(products).
-		OnConflict(goqu.DoNothing())
-
-	sql, _, err := builder.ToSQL()
-	if err != nil {
-		return fmt.Errorf("failed to build SQL: %w", err)
-	}
-
-	start := time.Now()
-	res, err := db.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
-	}
-	took := time.Since(start)
-
-	affectedRows, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	log.Printf("Inserted: %d/%d games from batch in: %v\n",
-		affectedRows, len(products), took)
-	return nil
-}
-
-func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
+func downloadReviews(db goger.Repo, gameIDsToTitles map[string]string) error {
 	var group errgroup.Group
 	group.SetLimit(5)
 	for gameID, title := range gameIDsToTitles {
@@ -176,7 +135,7 @@ func downloadReviews(gameIDsToTitles map[string]string, db *sqlx.DB) error {
 
 // TODO: Instead of per game - fetch games in batches. 1k at once.
 // Try also fetching count in parallel
-func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
+func reviewsState(repo goger.Repo, gameID string) (inDB, onPage int, err error) {
 	// Just single record. Every page contains pages and all records count.
 	resp, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
@@ -184,8 +143,8 @@ func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
 			"for : %s: %w", gameID, err)
 	}
 
-	// Now check how many reviews are in DB vs how many are on gog page.
-	inDB, err = countReviews(db, gameID)
+	// Check how many reviews are in DB vs how many are on gog page.
+	inDB, err = repo.CountReviewsForGame(gameID)
 	if err != nil {
 		return -1, -1, fmt.Errorf("failed to count reviews in db: %w", err)
 	}
@@ -193,7 +152,7 @@ func reviewsState(db *sqlx.DB, gameID string) (inDB, onPage int, err error) {
 	return inDB, resp.ReviewCount, nil
 }
 
-func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) error {
+func downloadGameReviews(repo goger.Repo, gameID, title string, skip, total int) error {
 	// TODO: Make configurable
 	const pageSize = 200
 	// Reviews are present on gog page in chrono order.
@@ -206,32 +165,25 @@ func downloadGameReviews(db *sqlx.DB, gameID, title string, skip, total int) err
 	// How many pages there are and how many to skip.
 	missingPages -= skip / pageSize
 
-	var group errgroup.Group
-	group.SetLimit(5)
-	// TODO: Split into 2 workers
 	for i := missingPages; i > 0; i-- {
-		page := i
-		group.Go(func() error {
-			start := time.Now()
-			resp, err := fetchReviews(gameID, page, pageSize)
-			if err != nil {
-				return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
-					gameID, title, err)
-			}
-			took := time.Since(start)
+		start := time.Now()
+		resp, err := fetchReviews(gameID, i, pageSize)
+		if err != nil {
+			return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
+				gameID, title, err)
+		}
+		took := time.Since(start)
 
-			reviews := resp.Embedded.Reviews
-			log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
-				len(reviews), resp.ReviewCount, page, resp.Pages, title, took)
+		reviews := resp.Embedded.Reviews
+		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
+			len(reviews), resp.ReviewCount, i, resp.Pages, title, took)
 
-			if err = insertReviews(db, reviews.ToRepo()); err != nil {
-				return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
-					"of: %s to db: %w", page, resp.Pages, len(reviews), title, err)
-			}
-			return nil
-		})
+		if err := repo.CreateReviews(reviews.ToRepo()); err != nil {
+			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
+				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
+		}
 	}
-	return group.Wait()
+	return nil
 }
 
 func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, error) {
@@ -289,65 +241,4 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
 	}
 
 	return resp, err
-}
-
-func insertReviews(db *sqlx.DB, reviews []goger.ReviewRepo) error {
-	builder := goqu.Insert("reviews").Rows(reviews).
-		OnConflict(goqu.DoNothing())
-
-	sql, _, err := builder.ToSQL()
-	if err != nil {
-		return fmt.Errorf("failed to build SQL: %w", err)
-	}
-
-	start := time.Now()
-	res, err := db.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
-	}
-	took := time.Since(start)
-
-	affectedRows, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	log.Printf("Inserted: %d/%d reviews from batch in: %v\n",
-		affectedRows, len(reviews), took)
-	return nil
-}
-
-func countReviews(db *sqlx.DB, gameID string) (int, error) {
-	const query = `SELECT COUNT(id) FROM reviews where product_id = $1`
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return -1, fmt.Errorf("failed to prepare stmt: %w", err)
-	}
-	defer stmt.Close()
-
-	rows, err := stmt.Query(gameID)
-	if err != nil {
-		return -1, fmt.Errorf("failed to exec: %w", err)
-	}
-	defer rows.Close()
-
-	var count int
-	for rows.Next() {
-		if err = rows.Scan(&count); err != nil {
-			return -1, fmt.Errorf("failed to scan: %w", err)
-		}
-	}
-
-	return count, nil
-}
-
-func saveRunTimestamp(db *sqlx.DB) error {
-	ts := time.Now().UTC().Format("2006-01-02 15:04:05.999")
-	// Upsert if there's record already
-	query := `
-		INSERT INTO last_run (onerow_id, ts) VALUES (true, $1)
-		ON CONFLICT (onerow_id) DO UPDATE SET ts = $1
-	`
-	_, err := db.Exec(query, ts)
-	return err
 }

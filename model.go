@@ -458,3 +458,9 @@ type ReviewRepo struct {
 	CreationDate       string         `json:"creationDate" db:"creation_date"`
 	InternalUpdateDate string         `json:"internalUpdateDate" db:"internal_update_date"`
 }
+
+type UIGame struct {
+	ID           int    `db:"id"`
+	Title        string `db:"title"`
+	ReviewsCount int    `db:"reviews_count"`
+}

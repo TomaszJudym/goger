@@ -1,38 +1,29 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/tomaszjudym/goger"
 )
 
-// Game represents the structure of a game.
-type Game struct {
-	ID           int
-	Title        string
-	ReviewsCount int
-}
-
 // Page represents the data to be rendered on the webpage.
 type Page struct {
-	Games      []Game
+	Games      []goger.UIGame
 	TotalPages int
 }
 
 var (
-	db *sqlx.DB
+	db goger.Repo
 )
 
 func init() {
 	var err error
-	db, err = goger.ConnectDB()
+	db, err = goger.NewRepo()
 	if err != nil {
 		log.Fatalf("Failed to connect to db: %v", err)
 	}
@@ -55,7 +46,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
-	gamesCount, err := goger.CountGames(db)
+	gamesCount, err := db.CountGames()
 	took := time.Since(start)
 	if err != nil {
 		log.Printf("Failed to count games: %v", err)
@@ -72,7 +63,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch games with reviews count from the database
 	start = time.Now()
-	games, err := getGamesWithReviews((page-1)*50, 50)
+	games, err := db.GamesWithRevsiewsCount((page-1)*50, 50)
+	if err != nil {
+		log.Printf("Failed to cout games reviews offset: %d: %v", (page-1)*50, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	took = time.Since(start)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -90,39 +86,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "static/favicon.png")
-}
-
-func getGamesWithReviews(offset, limit int) ([]Game, error) {
-	const query = `
-		SELECT g.id, g.title, COUNT(r.id) AS reviews_count
-		FROM games g
-		LEFT JOIN reviews r ON g.id = r.product_id
-		GROUP BY g.id, g.title
-		ORDER BY reviews_count DESC, g.id
-		OFFSET $1
-		LIMIT $2`
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-	rows, err := stmt.Query(offset, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var games []Game
-	for rows.Next() {
-		var game Game
-		err := rows.Scan(&game.ID, &game.Title, &game.ReviewsCount)
-		if err != nil {
-			return nil, err
-		}
-		games = append(games, game)
-	}
-
-	return games, nil
 }
 
 // TODO: Finish pagination. Display only +/- 30 (?) numbers
