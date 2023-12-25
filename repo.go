@@ -205,7 +205,7 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 			offset, limit, err)
 	}
 
-	var games []UIGame
+	games := make([]UIGame, 0, limit)
 	for rows.Next() {
 		var game UIGame
 		err := rows.Scan(&game.ID, &game.Title, &game.ReviewsCount)
