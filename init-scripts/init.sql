@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS games (
     product_state VARCHAR(50) NOT NULL,
     genres VARCHAR[] NOT NULL,
     tags VARCHAR[] NOT NULL,
+    reviews_count INT DEFAULT 0;
     reviews_rating INTEGER NOT NULL,
     PRIMARY KEY (id, slug)
 );

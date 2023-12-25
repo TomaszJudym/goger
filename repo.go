@@ -10,15 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-type Repo interface {
-	CreateGames([]ProductRepo) error
-	CreateReviews([]ReviewRepo) error
-	CountReviewsForGame(id string) (int, error)
-	CountGames() (int, error)
-	GamesWithRevsiewsCount(offset, limit int) ([]UIGame, error)
-	SaveNow() error
-}
-
 type GamesRepo struct {
 	db                 *goqu.Database
 	countGames         *sql.Stmt
@@ -59,11 +50,9 @@ func NewRepo() (*GamesRepo, error) {
 		return nil, err
 	}
 	gamesWithReviewCount, err := gq.Prepare(`
-		SELECT g.id, g.title, COUNT(r.id) AS reviews_count
-		FROM games g
-		LEFT JOIN reviews r ON g.id = r.product_id
-		GROUP BY g.id, g.title
-		ORDER BY reviews_count DESC, g.id
+		SELECT id, title, reviews_count
+		FROM games
+		ORDER BY reviews_count DESC, id
 		OFFSET $1
 		LIMIT $2`)
 	if err != nil {
@@ -104,27 +93,49 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) error {
 }
 
 func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
-	sql, _, err := r.db.Insert("reviews").Rows(reviews).
-		OnConflict(goqu.DoNothing()).ToSQL()
+	tx, err := r.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to build query: %w", err)
+		return fmt.Errorf("failed to begin tx: %w", err)
 	}
 
-	start := time.Now()
-	res, err := r.db.Exec(sql)
+	sql, _, err := tx.Insert("reviews").Rows(reviews).
+		OnConflict(goqu.DoNothing()).ToSQL()
 	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
+		return fmt.Errorf("failed to build insert query: %w", err)
+	}
+	start := time.Now()
+	res, err := tx.Exec(sql)
+	if err != nil {
+		return fmt.Errorf("failed to execute insert query: %w", err)
 	}
 	took := time.Since(start)
 
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("failed to get rows affected by insert: %w", err)
 	}
-	if affectedRows != 0 {
-		log.Printf("Inserted: %d/%d reviews from batch in: %v\n",
-			affectedRows, len(reviews), took)
+	if affectedRows == 0 {
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit tx: %w", err)
+		}
 	}
+
+	sql, _, err = tx.Update("games").
+		Set(goqu.Record{"reviews_count": goqu.L("reviews_count + ?", affectedRows)}).
+		Where(goqu.Ex{"id": reviews[0].ProductID}).ToSQL()
+	updateStart := time.Now()
+	res, err = tx.Exec(sql)
+	if err != nil {
+		return fmt.Errorf("failed to exec reviews count update: %w", err)
+	}
+	updateTook := time.Since(updateStart)
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit final tx: %w", err)
+	}
+
+	log.Printf("Inserted: %d/%d reviews from batch in: %v, updated revs count in: %v\n",
+		affectedRows, len(reviews), took, updateTook)
 	return nil
 }
 
@@ -152,7 +163,7 @@ func CountGames(db *goqu.Database) (int, error) {
 	return count, nil
 }
 
-func (r *GamesRepo) CountReviewsForGame(id string) (int, error) {
+func (r *GamesRepo) GameReviewsCount(id string) (int, error) {
 	rows, err := r.countRevsForGame.Query(id)
 	if err != nil {
 		return -1, fmt.Errorf("failed to query revs for game: %s: %w",
@@ -187,7 +198,7 @@ func (r *GamesRepo) CountGames() (int, error) {
 	return count, nil
 }
 
-func (r *GamesRepo) GamesWithRevsiewsCount(offset, limit int) ([]UIGame, error) {
+func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 	rows, err := r.gamesWithRevsCount.Query(offset, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query with offset: %d and limit: %d: %w",

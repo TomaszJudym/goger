@@ -12,6 +12,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Repo interface {
+	CreateGames([]goger.ProductRepo) error
+	CreateReviews([]goger.ReviewRepo) error
+	GameReviewsCount(id string) (int, error)
+	SaveNow() error
+}
+
 func main() {
 	db, err := goger.NewRepo()
 	if err != nil {
@@ -24,12 +31,12 @@ func main() {
 		}
 	}()
 
-	if err = downloadAllGames(db); err != nil {
+	if err = run(db); err != nil {
 		log.Fatalf("failed to fetch all games: %v", err)
 	}
 }
 
-func downloadAllGames(db goger.Repo) error {
+func run(db Repo) error {
 	const pageSize = 1000
 	productsCount := 1000
 	page := 1
@@ -91,7 +98,7 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	return resp, nil
 }
 
-func insertToDB(repo goger.Repo, resp goger.CatalogResp) error {
+func insertToDB(repo Repo, resp goger.CatalogResp) error {
 	pr, err := resp.Products.ToRepo()
 	if err != nil {
 		return fmt.Errorf("failed to convert response products to repo: %w", err)
@@ -103,48 +110,57 @@ func insertToDB(repo goger.Repo, resp goger.CatalogResp) error {
 	return nil
 }
 
-func downloadReviews(db goger.Repo, gameIDsToTitles map[string]string) error {
+func downloadReviews(db Repo, gameIDsToTitles map[string]string) error {
 	var group errgroup.Group
-	group.SetLimit(5)
+	group.SetLimit(3)
 	for gameID, title := range gameIDsToTitles {
 		inGameID := gameID
 		inTitle := title
 		group.Go(func() error {
-			inDB, inPage, err := reviewsState(db, inGameID)
-			if err != nil {
-				return fmt.Errorf("failed to get reviews state of: %s: %w",
-					inTitle, err)
-			}
-			// Nothing to download or already have everything downloaded
-			if inPage == 0 || inDB >= inPage {
-				return nil
-			}
-			// Specify how many reviews are in db
-			// to skip their download.
-			log.Printf("%s has: %d onPage and: %d in DB to skip",
-				inTitle, inPage, inDB)
-			err = downloadGameReviews(db, inGameID, inTitle, inDB, inPage)
-			if err != nil {
-				return fmt.Errorf("failed to download: %s reviews: %w", inTitle, err)
-			}
-			return nil
+			return reviewsWorker(db, inTitle, inGameID)
 		})
 	}
 	return nil
 }
 
-// TODO: Instead of per game - fetch games in batches. 1k at once.
-// Try also fetching count in parallel
-func reviewsState(repo goger.Repo, gameID string) (inDB, onPage int, err error) {
+func reviewsWorker(db Repo, title, gameID string) error {
+	start := time.Now()
+	inDB, inPage, err := reviewsState(db, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to get reviews state of: %s: %w",
+			title, err)
+	}
+	// Nothing to download or already have everything downloaded
+	if inPage == 0 || inDB >= inPage {
+		return nil
+	}
+	// Specify how many reviews are in db
+	// to skip their download.
+	log.Printf("%s has: %d on page and: %d in DB to skip",
+		title, inPage, inDB)
+	err = downloadGameReviews(db, gameID, title, inDB, inPage)
+	if err != nil {
+		return fmt.Errorf("failed to download: %s reviews: %w", title, err)
+	}
+
+	newInDB, err := db.GameReviewsCount(gameID)
+	if err != nil {
+		return fmt.Errorf("failed to count: %s reviews: %w", title, err)
+	}
+	log.Printf("%s from %d to %d in DB in %v", title, inDB, newInDB, time.Since(start))
+	return nil
+}
+
+func reviewsState(repo Repo, gameID string) (inDB, onPage int, err error) {
 	// Just single record. Every page contains pages and all records count.
-	resp, err := fetchReviews(gameID, 1, 1)
+	resp, _, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
 		return -1, -1, fmt.Errorf("failed to fetch single review "+
 			"for : %s: %w", gameID, err)
 	}
 
 	// Check how many reviews are in DB vs how many are on gog page.
-	inDB, err = repo.CountReviewsForGame(gameID)
+	inDB, err = repo.GameReviewsCount(gameID)
 	if err != nil {
 		return -1, -1, fmt.Errorf("failed to count reviews in db: %w", err)
 	}
@@ -152,93 +168,103 @@ func reviewsState(repo goger.Repo, gameID string) (inDB, onPage int, err error) 
 	return inDB, resp.ReviewCount, nil
 }
 
-func downloadGameReviews(repo goger.Repo, gameID, title string, skip, total int) error {
+func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error {
 	// TODO: Make configurable
-	const pageSize = 200
+	const pageSize = 300
 	// Reviews are present on gog page in chrono order.
 	// Donwload from last page.
-	// Got number of reviews to skip and total number of reviews.
-	missingPages, remainder := total/pageSize, total%pageSize // ceil
+	totalPages, remainder := total/pageSize, total%pageSize
+	skipPages := skip / pageSize
+	startPage := totalPages - skipPages
 	if remainder != 0 {
-		missingPages++
+		startPage += 1
 	}
-	// How many pages there are and how many to skip.
-	missingPages -= skip / pageSize
-
-	for i := missingPages; i > 0; i-- {
+	//
+	downloaded := 0
+	totalTime := time.Duration(0)
+	totalFails := 0
+	l := pageSize
+	for i := startPage; i > 0; i-- {
+		// for i := missingPages; i > 0; i-- {
 		start := time.Now()
-		resp, err := fetchReviews(gameID, i, pageSize)
+		resp, fails, err := fetchReviews(gameID, i, pageSize)
 		if err != nil {
 			return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
 				gameID, title, err)
 		}
 		took := time.Since(start)
+		totalTime += took
+		totalFails += fails
 
 		reviews := resp.Embedded.Reviews
-		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
-			len(reviews), resp.ReviewCount, i, resp.Pages, title, took)
+		l = len(reviews)
+		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v with %d failures",
+			len(reviews), resp.ReviewCount, i, resp.Pages, title, took, fails)
+		downloaded += l
 
 		if err := repo.CreateReviews(reviews.ToRepo()); err != nil {
 			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
 				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
 		}
+		i++
 	}
+	log.Printf("Downloaded in total: %d reviews for: %s in: %v with %d fails",
+		downloaded, title, totalTime, totalFails)
 	return nil
 }
 
-func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, error) {
+// fetchReviews returns up to limit of reviews for game with gameID on page.
+// Second value is a number of failed requests before success.
+func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, int, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, limit)
-	resp, err := getWithBackoff(url, 9999)
+
+	resp, failures, err := getWithBackoff(url, 9999)
 	if err != nil {
 		// What gog is angry about?
-		return goger.ReviewsResp{}, fmt.Errorf("failed to get: %s: %w", url, err)
+		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return goger.ReviewsResp{}, fmt.Errorf("failed to read page: %d resp body: %w",
+		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to read page: %d resp body: %w",
 			page, err)
 	}
 
 	var data goger.ReviewsResp
 	err = json.Unmarshal(b, &data)
 	if err != nil {
-		return goger.ReviewsResp{}, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
+		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
 			page, string(b), err)
 	}
-
-	return data, nil
+	return data, failures, nil
 }
 
-func getWithBackoff(url string, maxRetries int) (*http.Response, error) {
+func getWithBackoff(url string, maxRetries int) (*http.Response, int, error) {
 	var (
 		resp *http.Response
 		err  error
 	)
-	for i := 1; i < maxRetries; i++ {
-		start := time.Now()
+	i := 1
+	for ; i < maxRetries; i++ {
+		//start := time.Now()
 		resp, err = http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			break
 		}
-		took := time.Since(start)
+		//took := time.Since(start)
 		// Incremental backoff
-		sleep := time.Duration(i) * 3 * time.Second
-		if err != nil {
-			log.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
-				"Retrying in %v...", i, took, http.StatusText(resp.StatusCode),
-				resp.StatusCode, sleep)
-		}
-		if resp != nil {
-			log.Printf("Attempt %d failed in: %v: msg: %s code: %d. "+
-				"Retrying in %v...", i, took, http.StatusText(resp.StatusCode),
-				resp.StatusCode, sleep)
+		sleep := time.Duration(i) * 5 * time.Second
+		if err != nil || resp == nil {
+			// TODO: Debugf
+			/*log.Printf("%s attempt %d failed in: %v: msg: %s code: %d. "+
+			"Retrying in %v...", url, i, took, http.StatusText(resp.StatusCode),
+			resp.StatusCode, sleep)*/
 		}
 		time.Sleep(sleep)
 	}
 
-	return resp, err
+	return resp, i - 1, err
 }

@@ -11,6 +11,11 @@ import (
 	"github.com/tomaszjudym/goger"
 )
 
+type Repo interface {
+	GamesWithReviewsCount(offset, limit int) ([]goger.UIGame, error)
+	CountGames() (int, error)
+}
+
 // Page represents the data to be rendered on the webpage.
 type Page struct {
 	Games      []goger.UIGame
@@ -18,7 +23,7 @@ type Page struct {
 }
 
 var (
-	db goger.Repo
+	db Repo
 )
 
 func init() {
@@ -53,8 +58,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server Error", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Counted: %d games in: %v", gamesCount, took)
-
 	pagesCount := gamesCount / 50
 
 	if page > pagesCount {
@@ -63,7 +66,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch games with reviews count from the database
 	start = time.Now()
-	games, err := db.GamesWithRevsiewsCount((page-1)*50, 50)
+	games, err := db.GamesWithReviewsCount((page-1)*50, 50)
 	if err != nil {
 		log.Printf("Failed to cout games reviews offset: %d: %v", (page-1)*50, err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
