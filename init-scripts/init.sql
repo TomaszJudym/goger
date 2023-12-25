@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS games (
     PRIMARY KEY (id, slug)
 );
 
-CREATE INDEX IF NOT EXISTS idx_slug ON games(slug);
 CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);
+CREATE INDEX IF NOT EXISTS idx_reviews_count ON games(reviews_count);
 
 -- Remember when last run was executed
 CREATE TABLE IF NOT EXISTS last_run (
