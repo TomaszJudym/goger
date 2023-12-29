@@ -188,6 +188,7 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 	if missing < pageSize {
 		// TODO: Download just from start first n new reviews.
 		startPage = 1
+		log.Printf("Downloading %d instead of %d from 1st page", missing, pageSize)
 		pageSize = missing
 	}
 	for i := startPage; i > 0; i-- {
