@@ -51,9 +51,12 @@ func run(db Repo) error {
 		productsCount = len(resp.Products)
 		total += productsCount
 		// Save them to db
-		if err = insertToDB(db, resp); err != nil {
-			return fmt.Errorf("failed to insert page: %d of: %d games to db: %w",
-				page, productsCount, err)
+		pr, err := resp.Products.ToRepo(time.Now())
+		if err != nil {
+			return fmt.Errorf("failed to convert response products to repo: %w", err)
+		}
+		if db.CreateGames(pr); err != nil {
+			return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 		}
 		// TODO: Metrics
 		// For every game get reviews of this game
@@ -98,18 +101,6 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	return resp, nil
 }
 
-func insertToDB(repo Repo, resp goger.CatalogResp) error {
-	pr, err := resp.Products.ToRepo(time.Now())
-	if err != nil {
-		return fmt.Errorf("failed to convert response products to repo: %w", err)
-	}
-
-	if repo.CreateGames(pr); err != nil {
-		return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
-	}
-	return nil
-}
-
 func downloadReviews(db Repo, gameIDsToTitles map[string]string) error {
 	var group errgroup.Group
 	group.SetLimit(3)
@@ -125,17 +116,24 @@ func downloadReviews(db Repo, gameIDsToTitles map[string]string) error {
 
 func reviewsWorker(db Repo, title, gameID string) error {
 	start := time.Now()
-	inDB, inPage, err := reviewsState(db, gameID)
+	// Every response contains total review count.
+	// Get smallest response to get this count.
+	resp, _, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
-		return fmt.Errorf("failed to get reviews state of: %s: %w",
-			title, err)
+		return fmt.Errorf("failed to fetch single review "+
+			"for : %s: %w", gameID, err)
+	}
+	inPage := resp.ReviewCount
+	// Check how many reviews are in db.
+	inDB, err := db.GameReviewsCount(gameID)
+	if err != nil {
+		return fmt.Errorf("failed to count reviews in db: %w", err)
 	}
 	// Nothing to download or already have everything downloaded
 	if inPage == 0 || inDB >= inPage {
 		return nil
 	}
-	// Specify how many reviews are in db
-	// to skip their download.
+	// Amount of reviews in DB will be skipped in download,
 	log.Printf("%s has: %d on page and: %d in DB to skip",
 		title, inPage, inDB)
 	err = downloadGameReviews(db, gameID, title, inDB, inPage)
@@ -179,20 +177,19 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 	if remainder != 0 {
 		startPage += 1
 	}
-	//
 	downloaded := 0
 	totalTime := time.Duration(0)
 	totalFails := 0
 	l := pageSize
+	// If there's less than page missing, just first page
+	// can be downloaded with less records than page size.
 	missing := total - skip
 	if missing < pageSize {
-		// TODO: Download just from start first n new reviews.
 		startPage = 1
 		log.Printf("Downloading %d instead of %d from 1st page", missing, pageSize)
 		pageSize = missing
 	}
 	for i := startPage; i > 0; i-- {
-		// for i := missingPages; i > 0; i-- {
 		start := time.Now()
 		resp, fails, err := fetchReviews(gameID, i, pageSize)
 		if err != nil {
@@ -229,7 +226,6 @@ func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, int, error
 
 	resp, failures, err := getWithBackoff(url, 9999)
 	if err != nil {
-		// What gog is angry about?
 		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
 	defer resp.Body.Close()
@@ -241,8 +237,7 @@ func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, int, error
 	}
 
 	var data goger.ReviewsResp
-	err = json.Unmarshal(b, &data)
-	if err != nil {
+	if err = json.Unmarshal(b, &data); err != nil {
 		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
 			page, string(b), err)
 	}
