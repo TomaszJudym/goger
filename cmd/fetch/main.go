@@ -99,7 +99,7 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 }
 
 func insertToDB(repo Repo, resp goger.CatalogResp) error {
-	pr, err := resp.Products.ToRepo()
+	pr, err := resp.Products.ToRepo(time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to convert response products to repo: %w", err)
 	}
@@ -170,7 +170,7 @@ func reviewsState(repo Repo, gameID string) (inDB, onPage int, err error) {
 
 func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error {
 	// TODO: Make configurable
-	const pageSize = 300
+	var pageSize = 300
 	// Reviews are present on gog page in chrono order.
 	// Donwload from last page.
 	totalPages, remainder := total/pageSize, total%pageSize
@@ -184,6 +184,12 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 	totalTime := time.Duration(0)
 	totalFails := 0
 	l := pageSize
+	missing := total - skip
+	if missing < pageSize {
+		// TODO: Download just from start first n new reviews.
+		startPage = 1
+		pageSize = missing
+	}
 	for i := startPage; i > 0; i-- {
 		// for i := missingPages; i > 0; i-- {
 		start := time.Now()
@@ -202,7 +208,7 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 			len(reviews), resp.ReviewCount, i, resp.Pages, title, took, fails)
 		downloaded += l
 
-		if err := repo.CreateReviews(reviews.ToRepo()); err != nil {
+		if err := repo.CreateReviews(reviews.ToRepo(time.Now())); err != nil {
 			return fmt.Errorf("failed to insert page: %d/%d of: %d reviews "+
 				"of: %s to db: %w", i, resp.Pages, len(reviews), title, err)
 		}
@@ -258,7 +264,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, int, error) {
 		// Incremental backoff
 		sleep := time.Duration(i) * 5 * time.Second
 		if err != nil || resp == nil {
-			// TODO: Debugf
+			// TODO: Debugf and logging levels. Config val for them.
 			/*log.Printf("%s attempt %d failed in: %v: msg: %s code: %d. "+
 			"Retrying in %v...", url, i, took, http.StatusText(resp.StatusCode),
 			resp.StatusCode, sleep)*/

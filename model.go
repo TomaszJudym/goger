@@ -17,18 +17,18 @@ const emptyDate = `0001-01-01`
 type Reviews []Review
 type Products []Product
 
-func (r Reviews) ToRepo() []ReviewRepo {
+func (r Reviews) ToRepo(ts time.Time) []ReviewRepo {
 	ret := make([]ReviewRepo, 0, len(r))
 	for _, rev := range r {
-		ret = append(ret, rev.toRepo())
+		ret = append(ret, rev.toRepo(ts))
 	}
 	return ret
 }
 
-func (p Products) ToRepo() ([]ProductRepo, error) {
+func (p Products) ToRepo(ts time.Time) ([]ProductRepo, error) {
 	ret := make([]ProductRepo, 0, len(p))
 	for _, prod := range p {
-		repoProd, err := prod.ToRepo()
+		repoProd, err := prod.ToRepo(ts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert: %s to repo: %w",
 				prod.Title, err)
@@ -122,10 +122,11 @@ type ProductRepo struct {
 	Genres                   pq.StringArray `db:"genres"`
 	Tags                     pq.StringArray `db:"tags"`
 	ReviewsRating            int            `db:"reviews_rating"`
+	UpdatedAt                []byte         `db:"updated_at"`
 }
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
-func (p Product) ToRepo() (ProductRepo, error) {
+func (p Product) ToRepo(ts time.Time) (ProductRepo, error) {
 	// Prices can arrive empty for some reason
 	if p.Price.Final == "" {
 		p.Price.Final = "0.0"
@@ -198,6 +199,7 @@ func (p Product) ToRepo() (ProductRepo, error) {
 		Genres:                   extractSlugs(p.Genres),
 		Tags:                     extractSlugs(p.Tags),
 		ReviewsRating:            p.ReviewsRating,
+		UpdatedAt:                pq.FormatTimestamp(ts),
 	}, nil
 }
 
@@ -338,7 +340,7 @@ type Embedded struct {
 	Reviews Reviews `json:"items"`
 }
 
-func (r Review) toRepo() ReviewRepo {
+func (r Review) toRepo(ts time.Time) ReviewRepo {
 	links, err := toRepoLinks(r.Reviewer.Avatar.Links)
 	if err != nil {
 		log.Printf("WARN: Failed to convert links to repo: %v\n", err)
@@ -367,19 +369,9 @@ func (r Review) toRepo() ReviewRepo {
 		ReviewerID:         r.Reviewer.ID,
 		ReviewerUsername:   r.Reviewer.Username,
 		AvatarGogImageID:   links.GogImageID,
-		AvatarSmall:        links.Small,
-		AvatarSmall2x:      links.Small2X,
-		AvatarMedium:       links.Medium,
-		AvatarMedium2x:     links.Medium2X,
 		AvatarLarge:        links.Large,
-		AvatarLarge2x:      links.Large2X,
-		AvatarSDKImg32:     links.SdkImg32,
-		AvatarSDKImg64:     links.SdkImg64,
 		AvatarSDKImg184:    links.SdkImg184,
-		AvatarMenuSmall:    links.MenuSmall,
-		AvatarMenuSmall2:   links.MenuSmall2,
 		AvatarMenuBig:      links.MenuBig,
-		AvatarMenuBig2:     links.MenuBig2,
 		CountersGames:      r.Reviewer.Counters.Games,
 		CountersReviews:    r.Reviewer.Counters.Reviews,
 		Labels:             pq.StringArray(r.Labels),
@@ -388,6 +380,7 @@ func (r Review) toRepo() ReviewRepo {
 		ReviewDate:         r.Date,
 		CreationDate:       r.CreationDate,
 		InternalUpdateDate: r.InternalUpdateDate,
+		UpdatedAt:          pq.FormatTimestamp(ts),
 	}
 }
 
@@ -427,36 +420,27 @@ func toRepoLinks(respLinks any) (AvatarLinks, error) {
 }
 
 type ReviewRepo struct {
-	ID                 string         `json:"id" db:"id"`
-	ProductID          int            `json:"productId" db:"product_id"`
-	RatingValue        int            `json:"rating" db:"rating_value"`
-	Title              string         `json:"title" db:"title"`
-	Description        string         `json:"description" db:"description"`
-	Language           string         `json:"language" db:"language"`
-	ReviewerID         string         `json:"reviewerId" db:"reviewer_id"`
-	ReviewerUsername   string         `json:"reviewerUsername" db:"reviewer_username"`
-	AvatarGogImageID   string         `json:"avatarGogImageId" db:"avatar_gog_image_id"`
-	AvatarSmall        string         `json:"avatarSmall" db:"avatar_small"`
-	AvatarSmall2x      string         `json:"avatarSmall2x" db:"avatar_small_2x"`
-	AvatarMedium       string         `json:"avatarMedium" db:"avatar_medium"`
-	AvatarMedium2x     string         `json:"avatarMedium2x" db:"avatar_medium_2x"`
-	AvatarLarge        string         `json:"avatarLarge" db:"avatar_large"`
-	AvatarLarge2x      string         `json:"avatarLarge2x" db:"avatar_large_2x"`
-	AvatarSDKImg32     string         `json:"avatarSdkImg32" db:"avatar_sdk_img_32"`
-	AvatarSDKImg64     string         `json:"avatarSdkImg64" db:"avatar_sdk_img_64"`
-	AvatarSDKImg184    string         `json:"avatarSdkImg184" db:"avatar_sdk_img_184"`
-	AvatarMenuSmall    string         `json:"avatarMenuSmall" db:"avatar_menu_small"`
-	AvatarMenuSmall2   string         `json:"avatarMenuSmall2" db:"avatar_menu_small_2"`
-	AvatarMenuBig      string         `json:"avatarMenuBig" db:"avatar_menu_big"`
-	AvatarMenuBig2     string         `json:"avatarMenuBig2" db:"avatar_menu_big_2"`
-	CountersGames      int            `json:"countersGames" db:"counters_games"`
-	CountersReviews    int            `json:"countersReviews" db:"counters_reviews"`
-	Labels             pq.StringArray `json:"labels" db:"labels"`
-	Downvotes          int            `json:"downvotes" db:"downvotes"`
-	Upvotes            int            `json:"upvotes" db:"upvotes"`
-	ReviewDate         string         `json:"date" db:"review_date"`
-	CreationDate       string         `json:"creationDate" db:"creation_date"`
-	InternalUpdateDate string         `json:"internalUpdateDate" db:"internal_update_date"`
+	ID                 string         `db:"id"`
+	ProductID          int            `db:"product_id"`
+	RatingValue        int            `db:"rating_value"`
+	Title              string         `db:"title"`
+	Description        string         `db:"description"`
+	Language           string         `db:"language"`
+	ReviewerID         string         `db:"reviewer_id"`
+	ReviewerUsername   string         `db:"reviewer_username"`
+	AvatarGogImageID   string         `db:"avatar_gog_image_id"`
+	AvatarLarge        string         `db:"avatar_large"`
+	AvatarSDKImg184    string         `db:"avatar_sdk_img_184"`
+	AvatarMenuBig      string         `db:"avatar_menu_big"`
+	CountersGames      int            `db:"counters_games"`
+	CountersReviews    int            `db:"counters_reviews"`
+	Labels             pq.StringArray `db:"labels"`
+	Downvotes          int            `db:"downvotes"`
+	Upvotes            int            `db:"upvotes"`
+	ReviewDate         string         `db:"review_date"`
+	CreationDate       string         `db:"creation_date"`
+	InternalUpdateDate string         `db:"internal_update_date"`
+	UpdatedAt          []byte         `db:"updated_at"`
 }
 
 type UIGame struct {

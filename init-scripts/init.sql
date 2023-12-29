@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS games (
     tags VARCHAR[] NOT NULL,
     reviews_count INTEGER DEFAULT 0;
     reviews_rating INTEGER NOT NULL,
+    updated_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);
@@ -65,19 +66,9 @@ CREATE TABLE reviews (
     reviewer_id VARCHAR(255),
     reviewer_username VARCHAR(255),
     avatar_gog_image_id VARCHAR(255),
-    avatar_small VARCHAR(255),
-    avatar_small_2x VARCHAR(255),
-    avatar_medium VARCHAR(255),
-    avatar_medium_2x VARCHAR(255),
     avatar_large VARCHAR(255),
-    avatar_large_2x VARCHAR(255),
-    avatar_sdk_img_32 VARCHAR(255),
-    avatar_sdk_img_64 VARCHAR(255),
     avatar_sdk_img_184 VARCHAR(255),
-    avatar_menu_small VARCHAR(255),
-    avatar_menu_small_2 VARCHAR(255),
     avatar_menu_big VARCHAR(255),
-    avatar_menu_big_2 VARCHAR(255),
     counters_games INT,
     counters_reviews INT,
     labels VARCHAR(255)[] DEFAULT '{}',
@@ -85,7 +76,8 @@ CREATE TABLE reviews (
     upvotes INT,
     review_date TIMESTAMPTZ,
     creation_date TIMESTAMPTZ,
-    internal_update_date TIMESTAMPTZ
+    internal_update_date TIMESTAMPTZ,
+    updated_at TIMESTAMP
 );
 
 CREATE INDEX idx_review_date ON reviews (review_date);
