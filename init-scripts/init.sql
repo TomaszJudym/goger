@@ -14,7 +14,7 @@ GRANT ALL PRIVILEGES ON DATABASE goger TO goger;
 
 -- Keep all games from gog page
 CREATE TABLE IF NOT EXISTS games (
-    id INT,
+    id INT PRIMARY KEY,
     slug VARCHAR(255) NOT NULL,
     features VARCHAR[] NOT NULL,
     screenshots VARCHAR[] NOT NULL,
@@ -39,7 +39,6 @@ CREATE TABLE IF NOT EXISTS games (
     tags VARCHAR[] NOT NULL,
     reviews_count INTEGER DEFAULT 0;
     reviews_rating INTEGER NOT NULL,
-    PRIMARY KEY (id, slug)
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);

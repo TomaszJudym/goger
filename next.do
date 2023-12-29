@@ -108,3 +108,7 @@ Get:
 
 - Queries are slow with simple pagination, need indexes.
 - put reviews count in games table instead of counting it every time
+
+- https://stackoverflow.com/questions/6618366/improving-offset-performance-in-postgresql
+  ^ figure out most voted technique for speeding up queries.
+    Currently ~200ms for later pages looks pretty poorly.
