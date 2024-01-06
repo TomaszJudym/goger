@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Reviews</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Reviews</h1>
+        <table class="cyberpunk-table">
+            <thead>
+                <tr>
+                    <th>Product ID</th>
+                    <th>Rating</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Language</th>
+                    <th>Reviewer</th>
+                    <th>Games Count</th>
+                    <th>Reviews Count</th>
+                    <th>Labels</th>
+                    <th>Downvotes</th>
+                    <th>Upvotes</th>
+                    <th>Review Date</th>
+                    <th>Creation Date</th>
+                    <th>Internal Update Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Reviews}}
+                <tr>
+                    <td>{{.ProductID}}</td>
+                    <td>{{.RatingValue}}</td>
+                    <td>{{.Title}}</td>
+                    <td>{{.Description}}</td>
+                    <td>{{.Language}}</td>
+                    <td>{{.ReviewerUsername}}</td>
+                    <td>{{.CountersGames}}</td>
+                    <td>{{.CountersReviews}}</td>
+                    <td>{{range .Labels}}{{.}}, {{end}}</td>
+                    <td>{{.Downvotes}}</td>
+                    <td>{{.Upvotes}}</td>
+                    <td>{{.ReviewDate}}</td>
+                    <td>{{.CreationDate}}</td>
+                    <td>{{.InternalUpdateDate}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        <div class="pagination">
+            {{range $i := seq .TotalPages}}
+                <a href="?page={{$i}}">{{$i}}</a>
+            {{end}}
+        </div>
+    </div>
+</body>
+</html>
+

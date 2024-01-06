@@ -112,3 +112,9 @@ Get:
 - https://stackoverflow.com/questions/6618366/improving-offset-performance-in-postgresql
   ^ figure out most voted technique for speeding up queries.
     Currently ~200ms for later pages looks pretty poorly.
+
+- Make separate routine for fetching reviews and separate for inserting them to pg
+
+- Add loop for fetcher. Make it sleep before next run.
+
+- Add retries for connecting to db

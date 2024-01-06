@@ -6,7 +6,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: '3'
     environment:
       PGUSER: goger
       POSTGRES_DB: goger

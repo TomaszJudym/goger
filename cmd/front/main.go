@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -13,12 +15,18 @@ import (
 
 type Repo interface {
 	GamesWithReviewsCount(offset, limit int) ([]goger.UIGame, error)
+	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
+	GameReviewsCount(gameID string) (int, error)
 }
 
-// Page represents the data to be rendered on the webpage.
-type Page struct {
+type PageGames struct {
 	Games      []goger.UIGame
+	TotalPages int
+}
+
+type ReviewsPage struct {
+	Reviews    []goger.UIReview
 	TotalPages int
 }
 
@@ -35,7 +43,8 @@ func init() {
 }
 
 func main() {
-	http.HandleFunc("/games", handler)
+	http.HandleFunc("/games", handlerGames)
+	http.HandleFunc("/games/", handlerReviews)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/favicon.ico", faviconHandler)
 	const port = "8080"
@@ -43,7 +52,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handlerGames(w http.ResponseWriter, r *http.Request) {
 	// Get page parameter from the query string
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
@@ -84,23 +93,55 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Fetched page: %d of: %d games with: %d reviews in in: %v",
 		page, gamesCount, revs, took)
 
-	renderTemplate(w, Page{Games: games, TotalPages: pagesCount})
+	renderGames(w, PageGames{Games: games, TotalPages: pagesCount})
 }
 
-func faviconHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/favicon.png")
-}
-
-// TODO: Finish pagination. Display only +/- 30 (?) numbers
-func seq(n int) []int {
-	result := make([]int, n)
-	for i := range result {
-		result[i] = i + 1
+func handlerReviews(w http.ResponseWriter, r *http.Request) {
+	// Get page parameter from the query string
+	segments := strings.Split(r.URL.Path, "/")
+	l := len(segments)
+	if l != 4 {
+		http.Error(w, fmt.Sprintf("Path should have 4 elements but got %d",
+			l), http.StatusBadRequest)
+		log.Printf("Want 4 path elems got: %d in %v", l, segments)
+		return
 	}
-	return result
+
+	gameID := segments[2]
+	id, err := strconv.Atoi(gameID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid game ID: %s", gameID), http.StatusBadRequest)
+		log.Printf("Failed to convert gameID: %s to int: %v", gameID, err)
+		return
+	}
+
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	start := time.Now()
+	reviews, err := db.ReviewsForGame(id, (page-1)*50, 50)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		log.Printf("Failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
+		return
+	}
+	log.Printf("Fetched: %d reviews for: %d in: %v", len(reviews), id, time.Since(start))
+	// TODO: Fix - fetches nothing
+	start = time.Now()
+	count, err := db.GameReviewsCount(gameID)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		log.Printf("Failed to count reviews of game: %s, err: %v", gameID, err)
+		return
+	}
+	log.Printf("Counted: %d reviews in: %v", count, time.Since(start))
+
+	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
 }
 
-func renderTemplate(w http.ResponseWriter, page Page) {
+func renderGames(w http.ResponseWriter, page PageGames) {
 	tmpl, err := template.New("index.html").
 		Funcs(template.FuncMap{"seq": seq}).
 		ParseFiles("templates/index.html")
@@ -115,4 +156,34 @@ func renderTemplate(w http.ResponseWriter, page Page) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func renderReviews(w http.ResponseWriter, page ReviewsPage) {
+	tmpl, err := template.New("reviews.html").
+		Funcs(template.FuncMap{"seq": seq}).
+		ParseFiles("templates/reviews.html")
+	if err != nil {
+		log.Printf("Failed to parse template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err = tmpl.Execute(w, page); err != nil {
+		log.Printf("Failed to execute template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// TODO: Finish pagination. Display only +/- 30 (?) numbers
+func seq(n int) []int {
+	result := make([]int, n)
+	for i := range result {
+		result[i] = i + 1
+	}
+	return result
+}
+
+func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/favicon.png")
 }

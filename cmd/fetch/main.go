@@ -32,7 +32,7 @@ func main() {
 	}()
 
 	if err = run(db); err != nil {
-		log.Fatalf("failed to fetch all games: %v", err)
+		log.Fatalf("Failed to fetch all games: %v", err)
 	}
 }
 
@@ -118,7 +118,7 @@ func reviewsWorker(db Repo, title, gameID string) error {
 	start := time.Now()
 	// Every response contains total review count.
 	// Get smallest response to get this count.
-	resp, _, err := fetchReviews(gameID, 1, 1)
+	resp, _, _, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
 		return fmt.Errorf("failed to fetch single review "+
 			"for : %s: %w", gameID, err)
@@ -134,8 +134,8 @@ func reviewsWorker(db Repo, title, gameID string) error {
 		return nil
 	}
 	// Amount of reviews in DB will be skipped in download,
-	log.Printf("%s has: %d on page and: %d in DB to skip",
-		title, inPage, inDB)
+	log.Printf("%s has: %d on page: %d in DB - %d to download",
+		title, inPage, inDB, inPage-inDB)
 	err = downloadGameReviews(db, gameID, title, inDB, inPage)
 	if err != nil {
 		return fmt.Errorf("failed to download: %s reviews: %w", title, err)
@@ -151,7 +151,7 @@ func reviewsWorker(db Repo, title, gameID string) error {
 
 func reviewsState(repo Repo, gameID string) (inDB, onPage int, err error) {
 	// Just single record. Every page contains pages and all records count.
-	resp, _, err := fetchReviews(gameID, 1, 1)
+	resp, _, _, err := fetchReviews(gameID, 1, 1)
 	if err != nil {
 		return -1, -1, fmt.Errorf("failed to fetch single review "+
 			"for : %s: %w", gameID, err)
@@ -186,23 +186,21 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 	missing := total - skip
 	if missing < pageSize {
 		startPage = 1
-		log.Printf("Downloading %d instead of %d from 1st page", missing, pageSize)
 		pageSize = missing
 	}
 	for i := startPage; i > 0; i-- {
-		start := time.Now()
-		resp, fails, err := fetchReviews(gameID, i, pageSize)
+		resp, took, fails, err := fetchReviews(gameID, i, pageSize)
 		if err != nil {
 			return fmt.Errorf("failed to fetch reviews for: %s: %s: %w",
 				gameID, title, err)
 		}
-		took := time.Since(start)
 		totalTime += took
 		totalFails += fails
 
 		reviews := resp.Embedded.Reviews
 		l = len(reviews)
-		log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v with %d failures",
+		log.Printf("Fetched: %d/%d reviews "+
+			"from page: %d/%d of: %s in: %v with %d failures",
 			len(reviews), resp.ReviewCount, i, resp.Pages, title, took, fails)
 		downloaded += l
 
@@ -218,30 +216,33 @@ func downloadGameReviews(repo Repo, gameID, title string, skip, total int) error
 }
 
 // fetchReviews returns up to limit of reviews for game with gameID on page.
-// Second value is a number of failed requests before success.
-func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, int, error) {
+// 2nd value is a number of failed requests before success.
+// 3rd is how long it took
+func fetchReviews(gameID string, page, limit int) (goger.ReviewsResp, time.Duration, int, error) {
 	url := fmt.Sprintf(
 		`https://reviews.gog.com/v1/products/%s/reviews?page=%d&&limit=%d`,
 		gameID, page, limit)
 
+	start := time.Now()
 	resp, failures, err := getWithBackoff(url, 9999)
 	if err != nil {
-		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to get: %s: %w", url, err)
+		return goger.ReviewsResp{}, -1, -1, fmt.Errorf("failed to get: %s: %w", url, err)
 	}
+	took := time.Since(start)
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to read page: %d resp body: %w",
+		return goger.ReviewsResp{}, -1, -1, fmt.Errorf("failed to read page: %d resp body: %w",
 			page, err)
 	}
 
 	var data goger.ReviewsResp
 	if err = json.Unmarshal(b, &data); err != nil {
-		return goger.ReviewsResp{}, -1, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
+		return goger.ReviewsResp{}, -1, -1, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w:",
 			page, string(b), err)
 	}
-	return data, failures, nil
+	return data, took, failures, nil
 }
 
 func getWithBackoff(url string, maxRetries int) (*http.Response, int, error) {
@@ -260,7 +261,7 @@ func getWithBackoff(url string, maxRetries int) (*http.Response, int, error) {
 		// Incremental backoff
 		sleep := time.Duration(i) * 5 * time.Second
 		if err != nil || resp == nil {
-			// TODO: Debugf and logging levels. Config val for them.
+			// TODO: Debug and logging levels. Config val for them.
 			/*log.Printf("%s attempt %d failed in: %v: msg: %s code: %d. "+
 			"Retrying in %v...", url, i, took, http.StatusText(resp.StatusCode),
 			resp.StatusCode, sleep)*/

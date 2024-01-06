@@ -20,7 +20,7 @@
             <tbody>
                 {{range .Games}}
                 <tr>
-                    <td>{{.ID}}</td>
+                    <td><a href="/games/{{.ID}}/reviews">{{.ID}}</a></td>
                     <td>{{.Title}}</td>
                     <td>{{.ReviewsCount}}</td>
                 </tr>

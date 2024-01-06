@@ -1,7 +1,6 @@
 package goger
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -12,11 +11,11 @@ import (
 
 type GamesRepo struct {
 	db                 *goqu.Database
-	countGames         *sql.Stmt
-	countRevsForGame   *sql.Stmt
-	gamesWithRevsCount *sql.Stmt
-	fetchGames         *sql.Stmt
-	fetchReviwes       *sql.Stmt
+	countGames         *sqlx.Stmt
+	countRevsForGame   *sqlx.Stmt
+	gamesWithRevsCount *sqlx.Stmt
+	games              *sqlx.Stmt
+	reviewsByGame      *sqlx.Stmt
 }
 
 func NewRepo() (*GamesRepo, error) {
@@ -27,7 +26,6 @@ func NewRepo() (*GamesRepo, error) {
 		dbPassword = "goger"
 		dbName     = "goger"
 	)
-
 	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
 		"dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName)
@@ -41,22 +39,35 @@ func NewRepo() (*GamesRepo, error) {
 	}
 
 	gq := goqu.New("postgres", db)
-	countR, err := gq.Prepare("SELECT COUNT(id) FROM reviews where product_id = $1")
+	countR, err := db.Preparex("SELECT COUNT(id) FROM reviews where product_id = $1")
 	if err != nil {
 		return nil, err
 	}
-	countG, err := gq.Prepare("SELECT COUNT(id) FROM games")
+	countG, err := db.Preparex("SELECT COUNT(id) FROM games")
 	if err != nil {
 		return nil, err
 	}
-	gamesWithReviewCount, err := gq.Prepare(`
+	gamesWithReviewCount, err := db.Preparex(`
 		SELECT id, title, reviews_count
 		FROM games
 		ORDER BY reviews_count DESC, id
 		OFFSET $1
 		LIMIT $2`)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+		return nil, err
+	}
+	reviewsByGame, err := db.Preparex(`
+		SELECT id, product_id, rating_value, title, description, language,
+			reviewer_username, counters_games, counters_reviews, labels, downvotes,
+			upvotes, review_date, creation_date, internal_update_date
+		FROM reviews
+		WHERE product_id = $1
+		ORDER BY review_date DESC
+		OFFSET $2
+		LIMIT $3
+	`)
+	if err != nil {
+		return nil, err
 	}
 
 	return &GamesRepo{
@@ -64,6 +75,7 @@ func NewRepo() (*GamesRepo, error) {
 		countRevsForGame:   countR,
 		countGames:         countG,
 		gamesWithRevsCount: gamesWithReviewCount,
+		reviewsByGame:      reviewsByGame,
 	}, nil
 }
 
@@ -166,7 +178,7 @@ func CountGames(db *goqu.Database) (int, error) {
 func (r *GamesRepo) GameReviewsCount(id string) (int, error) {
 	rows, err := r.countRevsForGame.Query(id)
 	if err != nil {
-		return -1, fmt.Errorf("failed to query revs for game: %s: %w",
+		return -1, fmt.Errorf("failed to query revs for game: %d: %w",
 			id, err)
 	}
 	defer rows.Close()
@@ -204,6 +216,7 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 		return nil, fmt.Errorf("failed to query with offset: %d and limit: %d: %w",
 			offset, limit, err)
 	}
+	defer rows.Close()
 
 	games := make([]UIGame, 0, limit)
 	for rows.Next() {
@@ -215,6 +228,25 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 		games = append(games, game)
 	}
 	return games, nil
+}
+
+func (r *GamesRepo) ReviewsForGame(productID, offset, limit int) (RepoReviews, error) {
+	rows, err := r.reviewsByGame.Queryx(productID, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query reviews for product ID %d with offset: %d and limit: %d: %w",
+			productID, offset, limit, err)
+	}
+	defer rows.Close()
+
+	reviews := make([]ReviewRepo, 0, limit)
+	for rows.Next() {
+		var review ReviewRepo
+		if err := rows.StructScan(&review); err != nil {
+			return nil, fmt.Errorf("failed to scan review: %w", err)
+		}
+		reviews = append(reviews, review)
+	}
+	return reviews, nil
 }
 
 func (r *GamesRepo) SaveNow() error {

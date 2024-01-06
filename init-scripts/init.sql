@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS games (
     product_state VARCHAR(50) NOT NULL,
     genres VARCHAR[] NOT NULL,
     tags VARCHAR[] NOT NULL,
-    reviews_count INTEGER DEFAULT 0;
+    reviews_count INTEGER DEFAULT 0,
     reviews_rating INTEGER NOT NULL,
     updated_at TIMESTAMP
 );
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS last_run (
 );
 
 -- Store reviews for all games
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
     id VARCHAR(255) PRIMARY KEY,
     product_id INT,
     rating_value INT,

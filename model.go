@@ -443,6 +443,52 @@ type ReviewRepo struct {
 	UpdatedAt          []byte         `db:"updated_at"`
 }
 
+func (r ReviewRepo) ToUI() UIReview {
+	return UIReview{
+		ProductID:          r.ProductID,
+		RatingValue:        r.RatingValue,
+		Title:              r.Title,
+		Description:        r.Description,
+		Language:           r.Language,
+		ReviewerUsername:   r.ReviewerUsername,
+		CountersGames:      r.CountersGames,
+		CountersReviews:    r.CountersReviews,
+		Labels:             r.Labels,
+		Downvotes:          r.Downvotes,
+		Upvotes:            r.Upvotes,
+		ReviewDate:         r.ReviewDate,
+		CreationDate:       r.CreationDate,
+		InternalUpdateDate: r.InternalUpdateDate,
+	}
+}
+
+type RepoReviews []ReviewRepo
+
+func (u RepoReviews) ToUI() []UIReview {
+	ret := make([]UIReview, 0, len(u))
+	for _, r := range u {
+		ret = append(ret, r.ToUI())
+	}
+	return ret
+}
+
+type UIReview struct {
+	ProductID          int
+	RatingValue        int
+	Title              string
+	Description        string
+	Language           string
+	ReviewerUsername   string
+	CountersGames      int
+	CountersReviews    int
+	Labels             []string
+	Downvotes          int
+	Upvotes            int
+	ReviewDate         string
+	CreationDate       string
+	InternalUpdateDate string
+}
+
 type UIGame struct {
 	ID           int    `db:"id"`
 	Title        string `db:"title"`
