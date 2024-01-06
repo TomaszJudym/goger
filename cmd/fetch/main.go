@@ -29,9 +29,17 @@ func newReviewer(r Repo) *reviewer {
 }
 
 func main() {
-	db, err := goger.NewRepo()
-	if err != nil {
-		log.Fatalf("failed to create repo: %v", err)
+	var (
+		db  *goger.GamesRepo
+		err error
+	)
+	for {
+		db, err = goger.NewRepo()
+		if err == nil {
+			break
+		}
+		log.Fatalf("failed to create repo: %v, retrying in 10s...", err)
+		time.Sleep(10 * time.Second)
 	}
 
 	defer func() {

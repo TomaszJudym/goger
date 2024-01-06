@@ -102,19 +102,3 @@ Get:
   Add Search by title. Check if postgres have text search possible.
   With stuff like mispelling etc.
 
-- PG
-  Consumes too much RAM.
-  Play with config to figure out to limit it to ~100MB
-
-- Queries are slow with simple pagination, need indexes.
-- put reviews count in games table instead of counting it every time
-
-- https://stackoverflow.com/questions/6618366/improving-offset-performance-in-postgresql
-  ^ figure out most voted technique for speeding up queries.
-    Currently ~200ms for later pages looks pretty poorly.
-
-- Make separate routine for fetching reviews and separate for inserting them to pg
-
-- Add loop for fetcher. Make it sleep before next run.
-
-- Add retries for connecting to db
