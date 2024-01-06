@@ -87,18 +87,22 @@ Otherwise reverse loop, got pages number after all
 
 ##########################################
 
-Add Prometheus and grafana.
+- Add Prometheus and grafana.
 Get:
-- resources
+- resources mem, cpu, heartbeat
 - API response times
 - queries times
 - fetching games times
 - games count
 - reviews count
-- db usage
+- db usage - disk, mem, cpu
 
 - UI:
   Add sorting buttons per ID, title and Reviews count.
   Add Search by title. Check if postgres have text search possible.
   With stuff like mispelling etc.
+
+
+- Redis: to cache responses
+
 
