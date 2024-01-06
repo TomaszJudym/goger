@@ -1,6 +1,7 @@
 package goger
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -105,9 +106,11 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) error {
 }
 
 func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
-	// TODO: Can cause error if multiple routines
-	// create tx?
-	tx, err := r.db.Begin()
+	// TODO: Config
+	dbTimeout := 15 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin tx: %w", err)
 	}
@@ -118,7 +121,7 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 	start := time.Now()
-	res, err := tx.Exec(sql)
+	res, err := tx.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to execute insert query: %w", err)
 	}
@@ -130,15 +133,16 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
 	}
 	if affectedRows == 0 {
 		if err = tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit tx: %w", err)
+			err = fmt.Errorf("failed to commit tx: %w", err)
 		}
+		return err
 	}
 
 	sql, _, err = tx.Update("games").
 		Set(goqu.Record{"reviews_count": goqu.L("reviews_count + ?", affectedRows)}).
 		Where(goqu.Ex{"id": reviews[0].ProductID}).ToSQL()
 	updateStart := time.Now()
-	res, err = tx.Exec(sql)
+	res, err = tx.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to exec reviews count update: %w", err)
 	}
@@ -235,7 +239,8 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 func (r *GamesRepo) ReviewsForGame(productID, offset, limit int) (RepoReviews, error) {
 	rows, err := r.reviewsByGame.Queryx(productID, offset, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query reviews for product ID %d with offset: %d and limit: %d: %w",
+		return nil, fmt.Errorf("failed to query reviews for product ID %d "+
+			"with offset: %d and limit: %d: %w",
 			productID, offset, limit, err)
 	}
 	defer rows.Close()

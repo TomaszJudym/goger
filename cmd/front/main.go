@@ -77,7 +77,7 @@ func handlerGames(w http.ResponseWriter, r *http.Request) {
 	start = time.Now()
 	games, err := db.GamesWithReviewsCount((page-1)*50, 50)
 	if err != nil {
-		log.Printf("Failed to cout games reviews offset: %d: %v", (page-1)*50, err)
+		log.Printf("Failed to count games reviews offset: %d: %v", (page-1)*50, err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -119,15 +119,17 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	if err != nil || page < 1 {
 		page = 1
 	}
-
+	// TODO: Make 2 fetches parallel
 	start := time.Now()
 	reviews, err := db.ReviewsForGame(id, (page-1)*50, 50)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
-		log.Printf("Failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
+		log.Printf("Failed to get page: %d reviews for game: %s, err: %v",
+			page, gameID, err)
 		return
 	}
-	log.Printf("Fetched: %d reviews for: %d in: %v", len(reviews), id, time.Since(start))
+	log.Printf("Fetched: %d reviews for: %d in: %v",
+		len(reviews), id, time.Since(start))
 	// TODO: Fix - fetches nothing
 	start = time.Now()
 	count, err := db.GameReviewsCount(gameID)
