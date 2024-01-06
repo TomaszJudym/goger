@@ -105,6 +105,8 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) error {
 }
 
 func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
+	// TODO: Can cause error if multiple routines
+	// create tx?
 	tx, err := r.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin tx: %w", err)
@@ -178,7 +180,7 @@ func CountGames(db *goqu.Database) (int, error) {
 func (r *GamesRepo) GameReviewsCount(id string) (int, error) {
 	rows, err := r.countRevsForGame.Query(id)
 	if err != nil {
-		return -1, fmt.Errorf("failed to query revs for game: %d: %w",
+		return -1, fmt.Errorf("failed to query revs for game: %s: %w",
 			id, err)
 	}
 	defer rows.Close()
