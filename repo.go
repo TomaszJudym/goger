@@ -266,3 +266,24 @@ func (r *GamesRepo) SaveNow() error {
 	_, err := r.db.Exec(query, ts)
 	return err
 }
+
+func (r *GamesRepo) CreateRun(run RunRepo) error {
+	sql, _, err := r.db.Insert("run").Rows(run).ToSQL()
+	if err != nil {
+		return fmt.Errorf("failed to prepare query: %w", err)
+	}
+
+	res, err := r.db.Exec(sql)
+	if err != nil {
+		return fmt.Errorf("failed to insert err: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("want 1 affected row got: %d")
+	}
+
+	return nil
+}

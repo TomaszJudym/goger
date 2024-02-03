@@ -83,3 +83,33 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX idx_review_date ON reviews (review_date);
 CREATE INDEX idx_downvotes ON reviews (downvotes);
 CREATE INDEX idx_upvotes ON reviews (upvotes);
+
+-- Remember execution time of each run with count of
+-- fetched games and pages
+CREATE TABLE IF NOT EXISTS run (
+    id SERIAL PRIMARY KEY,
+    games INT NOT NULL,
+    pages INT NOT NULL,
+    start_ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    end_ts   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create a trigger function to maintain the fixed size of the run table.
+-- Keep only 100 most recent runs
+CREATE OR REPLACE FUNCTION maintain_queue_size()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Remove the oldest elements if the queue size exceeds 100
+    IF (SELECT COUNT(*) FROM run) > 100 THEN
+        DELETE FROM run
+        WHERE id IN (SELECT id FROM run ORDER BY start_ts LIMIT (SELECT COUNT(*) - 100 FROM run));
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create an AFTER INSERT trigger to invoke the maintain_queue_size function
+CREATE TRIGGER maintain_queue_size_trigger
+AFTER INSERT ON run
+FOR EACH STATEMENT EXECUTE FUNCTION maintain_queue_size();

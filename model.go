@@ -494,3 +494,10 @@ type UIGame struct {
 	Title        string `db:"title"`
 	ReviewsCount int    `db:"reviews_count"`
 }
+
+type RunRepo struct {
+	Games   int       `db:"games"`
+	Pages   int       `db:"pages"`
+	StartTs time.Time `db:"start_ts"`
+	EndTs   time.Time `db:"end_ts"`
+}

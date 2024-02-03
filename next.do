@@ -105,4 +105,9 @@ Get:
 
 - Redis: to cache responses
 
-
+- Single log to summarize single game. 
+amount before
+amount after
+time get
+time insert
+data size

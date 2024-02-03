@@ -18,6 +18,7 @@ type Repo interface {
 	CreateReviews([]goger.ReviewRepo) error
 	GameReviewsCount(id string) (int, error)
 	SaveNow() error
+	CreateRun(r goger.RunRepo) error
 }
 
 type reviewer struct {
@@ -48,7 +49,7 @@ func main() {
 		}
 	}()
 
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(20 * time.Minute)
 	defer ticker.Stop()
 	for ; true; <-ticker.C {
 		if err = run(db); err != nil {
@@ -65,12 +66,12 @@ func run(db Repo) error {
 	total := 0
 	start := time.Now()
 	for ; productsCount == pageSize; page++ {
-		// Get batch of games
+		// Fetch batch of games from GOG API
 		resp, err := fetchGames(page, pageSize)
 		if err != nil {
 			return fmt.Errorf("failed to get page: %d with: %d games: %w", page, pageSize, err)
 		}
-
+		// Track how many were fetched
 		productsCount = len(resp.Products)
 		total += productsCount
 		// Save them to db
@@ -78,19 +79,26 @@ func run(db Repo) error {
 		if err != nil {
 			return fmt.Errorf("failed to convert response products to repo: %w", err)
 		}
-
 		if db.CreateGames(pr); err != nil {
 			return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 		}
 		// TODO: Metrics
 		// For every game get reviews of this game
-		err = downloadReviews(db, resp.GameIDsToTitles())
-		if err != nil {
+		if err = downloadReviews(db, resp.GameIDsToTitles()); err != nil {
 			return fmt.Errorf("failed to download reviews on games page: %d: %w",
 				page, err)
 		}
 	}
 
+	end := time.Now()
+	if err := db.CreateRun(goger.RunRepo{
+		StartTs: start,
+		EndTs:   end,
+		Games:   total,
+		Pages:   page,
+	}); err != nil {
+		log.Printf("Failed to create run: %v", err)
+	}
 	log.Printf("Total pages: %d\n"+
 		"Total games: %d\n"+
 		"Took: %v\n", page, total, time.Since(start))
@@ -127,6 +135,7 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 
 func downloadReviews(db Repo, gameIDsToTitles map[string]string) error {
 	var group errgroup.Group
+	// TODO: Config
 	group.SetLimit(3)
 	for gameID, title := range gameIDsToTitles {
 		inGameID := gameID
@@ -141,7 +150,8 @@ func downloadReviews(db Repo, gameIDsToTitles map[string]string) error {
 func (r *reviewer) download(title, gameID string) error {
 	start := time.Now()
 	// Every response contains total review count.
-	// Get single review to figure out how much there's to do.
+	// Get single review to figure out how much reviews
+	// there are for this game in total.
 	resp, _, _, err := r.fetchReviews(context.Background(), gameID, 1, 1)
 	if err != nil {
 		return fmt.Errorf("failed to fetch single review "+
@@ -158,9 +168,7 @@ func (r *reviewer) download(title, gameID string) error {
 		return nil
 	}
 	// Amount of reviews in DB will be skipped in download,
-	log.Printf("%s has: %d on page: %d in DB - %d to download",
-		title, inPage, inDB, inPage-inDB)
-	err = r.downloadPage(gameID, title, inDB, inPage)
+	downloadedCount, err := r.downloadPage(gameID, title, inDB, inPage)
 	if err != nil {
 		return fmt.Errorf("failed to download: %s reviews: %w", title, err)
 	}
@@ -171,15 +179,16 @@ func (r *reviewer) download(title, gameID string) error {
 	}
 
 	if inDB != newInDB {
-		log.Printf("%s review count in DB changed from: %d to: %d in %v",
-			title, inDB, newInDB, time.Since(start))
+		log.Printf("downloaded: %d reviews, %s's review count in DB "+
+			"changed from: %d to: %d in: %v",
+			downloadedCount, title, inDB, newInDB, time.Since(start))
 	}
 
 	return nil
 }
 
-func (r *reviewer) downloadPage(gameID, title string, skip, total int) error {
-	// TODO: Make configurable
+func (r *reviewer) downloadPage(gameID, title string, skip, total int) (int, error) {
+	// TODO: Config
 	var pageSize = 300
 	// Reviews are present on gog page in chrono order.
 	// Donwload from last page.
@@ -209,12 +218,12 @@ func (r *reviewer) downloadPage(gameID, title string, skip, total int) error {
 	defer cancel()
 
 	go func() {
-		defer close(reviewsChan)
 		for i := startPage; i > 0; i-- {
 			resp, took, fails, err := r.fetchReviews(ctx, gameID, i, pageSize)
 			if err != nil {
 				errs <- fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
 					title, gameID, err)
+				break
 			}
 			totalTime += took
 			totalFails += fails
@@ -229,6 +238,7 @@ func (r *reviewer) downloadPage(gameID, title string, skip, total int) error {
 			// Why here was i++?
 		}
 		errs <- nil
+		close(reviewsChan)
 	}()
 	go func() {
 		for reviews := range reviewsChan {
@@ -256,12 +266,9 @@ func (r *reviewer) downloadPage(gameID, title string, skip, total int) error {
 	}
 
 	if err1 != nil || err2 != nil {
-		return fmt.Errorf("failed to download reviews err1: %v, err2: %v", err1, err2)
+		return -1, fmt.Errorf("failed to download reviews err1: %v, err2: %v", err1, err2)
 	}
-
-	log.Printf("Downloaded in total: %d reviews for: %s in: %v with: %d fails",
-		downloaded, title, totalTime, totalFails)
-	return nil
+	return downloaded, nil
 }
 
 // fetchReviews returns up to limit of reviews for game with gameID on page.
