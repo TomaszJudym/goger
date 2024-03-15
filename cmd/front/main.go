@@ -61,7 +61,6 @@ func handlerGames(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	gamesCount, err := db.CountGames()
-	took := time.Since(start)
 	if err != nil {
 		log.Printf("Failed to count games: %v", err)
 		http.Error(w, "Internal server Error", http.StatusInternalServerError)
@@ -81,7 +80,7 @@ func handlerGames(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	took = time.Since(start)
+	took := time.Since(start)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -119,26 +118,42 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	if err != nil || page < 1 {
 		page = 1
 	}
-	// TODO: Make 2 fetches parallel
+	var reviews goger.RepoReviews
+	var count int
+	errs := make(chan error, 2)
 	start := time.Now()
-	reviews, err := db.ReviewsForGame(id, (page-1)*50, 50)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		log.Printf("Failed to get page: %d reviews for game: %s, err: %v",
-			page, gameID, err)
-		return
+
+	go func() {
+		var err error
+		reviews, err = db.ReviewsForGame(id, (page-1)*50, 50)
+		if err != nil {
+			errs <- fmt.Errorf("failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
+			return
+		}
+		log.Printf("Fetched: %d reviews for: %d", len(reviews), id)
+		errs <- nil
+	}()
+
+	go func() {
+		var err error
+		count, err = db.GameReviewsCount(gameID)
+		if err != nil {
+			errs <- fmt.Errorf("failed to count reviews of game: %s, err: %v", gameID, err)
+			return
+		}
+		log.Printf("Counted: %d reviews", count)
+		errs <- nil
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Print(err)
+			return
+		}
 	}
-	log.Printf("Fetched: %d reviews for: %d in: %v",
-		len(reviews), id, time.Since(start))
-	// TODO: Fix - fetches nothing
-	start = time.Now()
-	count, err := db.GameReviewsCount(gameID)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		log.Printf("Failed to count reviews of game: %s, err: %v", gameID, err)
-		return
-	}
-	log.Printf("Counted: %d reviews in: %v", count, time.Since(start))
+	log.Printf("Completed fetches in: %v", time.Since(start))
 
 	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
 }
