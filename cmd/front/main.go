@@ -65,6 +65,7 @@ func main() {
 }
 
 func handlerGames(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	// Get page parameter from the query string
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
@@ -104,6 +105,7 @@ func handlerGames(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderGames(w, PageGames{Games: games, TotalPages: pagesCount})
+	log.Printf("Served games in %v, from IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
 func getGamesCount() (int, error) {
@@ -138,6 +140,7 @@ func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
 	const gamesKey = `games-with-reviews:count:%d:%d`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	val, err := rdb.Get(ctx, fmt.Sprintf(gamesKey, offset, limit)).Result()
 	if err == nil {
 		var games []goger.UIGame
@@ -161,6 +164,7 @@ func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
 }
 
 func handlerReviews(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	// Get page parameter from the query string
 	segments := strings.Split(r.URL.Path, "/")
 	l := len(segments)
@@ -246,6 +250,7 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
+	log.Printf("Served reviews in: %v IP: %s URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
 func renderGames(w http.ResponseWriter, page PageGames) {

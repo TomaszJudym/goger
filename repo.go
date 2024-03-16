@@ -79,84 +79,89 @@ func NewRepo() (*GamesRepo, error) {
 	}, nil
 }
 
-func (r *GamesRepo) CreateGames(games []ProductRepo) error {
+func (r *GamesRepo) CreateGames(games []ProductRepo) (int, error) {
 	sql, _, err := r.db.Insert("games").Rows(games).
 		OnConflict(goqu.DoNothing()).ToSQL()
 	if err != nil {
-		return fmt.Errorf("failed to build query: %w", err)
+		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
 
 	start := time.Now()
 	res, err := r.db.Exec(sql)
 	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
+		return 0, fmt.Errorf("failed to execute query: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
 	}
 	took := time.Since(start)
 
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if affectedRows != 0 {
 		log.Printf("Inserted: %d/%d games from batch in: %v\n",
 			affectedRows, len(games), took)
 	}
-	return nil
+	return int(affected), nil
 }
 
-func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
+func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 	// TODO: Config
 	dbTimeout := 15 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin tx: %w", err)
+		return 0, fmt.Errorf("failed to begin tx: %w", err)
 	}
 
 	sql, _, err := tx.Insert("reviews").Rows(reviews).
 		OnConflict(goqu.DoNothing()).ToSQL()
 	if err != nil {
-		return fmt.Errorf("failed to build insert query: %w", err)
+		return 0, fmt.Errorf("failed to build insert query: %w", err)
 	}
 	start := time.Now()
 	res, err := tx.ExecContext(ctx, sql)
 	if err != nil {
-		return fmt.Errorf("failed to execute insert query: %w", err)
+		return 0, fmt.Errorf("failed to execute insert query: %w", err)
 	}
 	took := time.Since(start)
 
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected by insert: %w", err)
+		return 0, fmt.Errorf("failed to get rows affected by insert: %w", err)
 	}
 	if affectedRows == 0 {
 		if err = tx.Commit(); err != nil {
 			err = fmt.Errorf("failed to commit tx: %w", err)
 		}
-		return err
+		return 0, err
 	}
+	numNewReviews := int(affectedRows)
 
 	sql, _, err = tx.Update("games").
 		Set(goqu.Record{"reviews_count": goqu.L("reviews_count + ?", affectedRows)}).
 		Where(goqu.Ex{"id": reviews[0].ProductID}).ToSQL()
 	if err != nil {
-		return fmt.Errorf("failed to build reviews count update query: %w", err)
+		return 0, fmt.Errorf("failed to build reviews count update query: %w", err)
 	}
 	updateStart := time.Now()
 	_, err = tx.ExecContext(ctx, sql)
 	if err != nil {
-		return fmt.Errorf("failed to exec reviews count update: %w", err)
+		return 0, fmt.Errorf("failed to exec reviews count update: %w", err)
 	}
 	updateTook := time.Since(updateStart)
 
 	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit final tx: %w", err)
+		return 0, fmt.Errorf("failed to commit final tx: %w", err)
 	}
 
 	log.Printf("Inserted: %d/%d reviews from batch in: %v, updated revs count in: %v\n",
 		affectedRows, len(reviews), took, updateTook)
-	return nil
+	return numNewReviews, nil
 }
 
 func CountGames(db *goqu.Database) (int, error) {

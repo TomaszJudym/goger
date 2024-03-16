@@ -44,7 +44,6 @@ func listenForDBChanges(connStr string) {
 
 	for {
 		n := <-conn.Notify
-		log.Printf("Received data change notification: %s", n.Extra)
 		switch n.Channel {
 		case "games_changes":
 			var game goger.ProductRepo

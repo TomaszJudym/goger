@@ -436,6 +436,26 @@ type ReviewRepo struct {
 	UpdatedAt          []byte         `db:"updated_at" json:"updatedAt"`
 }
 
+//nolint:gocyclo
+func (r *ReviewRepo) UnmarshalJSON(b []byte) error {
+	type alias ReviewRepo
+
+	aux := &struct {
+		ID int `json:"id"`
+		*alias
+	}{
+		alias: (*alias)(r),
+	}
+
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+
+	r.ID = strconv.Itoa(aux.ID)
+
+	return nil
+}
+
 func (r ReviewRepo) ToUI() UIReview {
 	return UIReview{
 		ProductID:          r.ProductID,
