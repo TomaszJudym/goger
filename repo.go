@@ -8,6 +8,7 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type GamesRepo struct {
@@ -15,8 +16,36 @@ type GamesRepo struct {
 	countGames         *sqlx.Stmt
 	countRevsForGame   *sqlx.Stmt
 	gamesWithRevsCount *sqlx.Stmt
-	games              *sqlx.Stmt
 	reviewsByGame      *sqlx.Stmt
+}
+
+func listenForDBChanges(connStr string) {
+	conn := pq.NewListener(connStr, 10*time.Second, time.Minute, nil)
+	defer conn.Close()
+
+	err := conn.Listen("games_changes")
+	if err != nil {
+		log.Fatalf("Error listening on channel 'games_changes': %v", err)
+	}
+
+	err = conn.Listen("reviews_changes")
+	if err != nil {
+		log.Fatalf("Error listening on channel 'reviews_changes': %v", err)
+	}
+
+	for {
+		select {
+		case n := <-conn.Notify:
+			log.Printf("Received data change notification: %s", n.Extra)
+		case <-time.After(90 * time.Second):
+			log.Println("Checking for notifications...")
+			go func() {
+				if err := conn.Ping(); err != nil {
+					log.Fatalf("Error pinging database: %v", err)
+				}
+			}()
+		}
+	}
 }
 
 func NewRepo() (*GamesRepo, error) {
@@ -30,6 +59,9 @@ func NewRepo() (*GamesRepo, error) {
 	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
 		"dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName)
+
+	// TODO: Drop after test
+	go listenForDBChanges(connectionString)
 
 	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
@@ -141,8 +173,11 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) error {
 	sql, _, err = tx.Update("games").
 		Set(goqu.Record{"reviews_count": goqu.L("reviews_count + ?", affectedRows)}).
 		Where(goqu.Ex{"id": reviews[0].ProductID}).ToSQL()
+	if err != nil {
+		return fmt.Errorf("failed to build reviews count update query: %w", err)
+	}
 	updateStart := time.Now()
-	res, err = tx.ExecContext(ctx, sql)
+	_, err = tx.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to exec reviews count update: %w", err)
 	}
@@ -282,7 +317,7 @@ func (r *GamesRepo) CreateRun(run RunRepo) error {
 		return fmt.Errorf("failed to get affected rows: %w", err)
 	}
 	if affected != 1 {
-		return fmt.Errorf("want 1 affected row got: %d")
+		return fmt.Errorf("want 1 affected row got: %d", affected)
 	}
 
 	return nil

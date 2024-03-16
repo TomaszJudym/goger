@@ -406,13 +406,6 @@ func toRepoLinks(respLinks any) (AvatarLinks, error) {
 					return links, fmt.Errorf("WARN: Failed to unmarshal "+
 						"links: %v (%T) into AvatarLinks: %v", m, m, err)
 				}
-			} else {
-				// It can also be empty array []any
-				_, ok = l.(any)
-				if !ok {
-					return links, fmt.Errorf("WARN: Links are non of "+
-						"expected types: %v (%T)", l, l)
-				}
 			}
 		}
 	}

@@ -113,3 +113,14 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER maintain_queue_size_trigger
 AFTER INSERT ON run
 FOR EACH STATEMENT EXECUTE FUNCTION maintain_queue_size();
+
+CREATE OR REPLACE FUNCTION notify_games_change() RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM pg_notify('games_changes', row_to_json(NEW)::text);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER games_after_change
+AFTER INSERT OR UPDATE OR DELETE ON games
+FOR EACH ROW EXECUTE FUNCTION notify_games_change();

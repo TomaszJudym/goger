@@ -1,20 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Space Mono', monospace;
+            background: #050505;
+            color: #96dced;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #171717;
+            color: #96dced;
+        }
+
+        th, td {
+            padding: 0.5rem;
+            border: 1px solid #333333;
+        }
+
+        thead {
+            background: #272727;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #2f2f2f;
+        }
+
+        a {
+            color: #96dced;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            max-width: 200px;
+        }
+
+        .pagination a {
+            margin: 0 5px;
+            padding: 5px 10px;
+            background: #272727;
+            color: #96dced;
+        }
+
+        .pagination a:hover {
+            background: #2f2f2f;
+        }
+    </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
     <title>Reviews</title>
 </head>
 <body>
-    <div class="container">
-        <h1>Reviews</h1>
-        <table class="cyberpunk-table">
-            <thead>
-                <tr>
-                    <th>Product ID</th>
-                    <th>Rating</th>
+    <table class="cyberpunk-table">
+        <thead>
+            <tr>
                     <th>Title</th>
+                    <th>Rating</th>
                     <th>Description</th>
                     <th>Language</th>
                     <th>Reviewer</th>
@@ -31,9 +77,8 @@
             <tbody>
                 {{range .Reviews}}
                 <tr>
-                    <td>{{.ProductID}}</td>
-                    <td>{{.RatingValue}}</td>
                     <td>{{.Title}}</td>
+                    <td>{{.RatingValue}}</td>
                     <td>{{.Description}}</td>
                     <td>{{.Language}}</td>
                     <td>{{.ReviewerUsername}}</td>
@@ -50,10 +95,9 @@
             </tbody>
         </table>
         <div class="pagination">
-            {{range $i := seq .TotalPages}}
-                <a href="?page={{$i}}">{{$i}}</a>
-            {{end}}
-        </div>
+        {{range $i := seq .TotalPages}}
+            <a href="?page={{$i}}">{{$i}}</a>
+        {{end}}
     </div>
 </body>
 </html>

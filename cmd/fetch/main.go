@@ -79,7 +79,7 @@ func run(db Repo) error {
 		if err != nil {
 			return fmt.Errorf("failed to convert response products to repo: %w", err)
 		}
-		if db.CreateGames(pr); err != nil {
+		if err = db.CreateGames(pr); err != nil {
 			return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 		}
 		// TODO: Metrics
@@ -111,12 +111,10 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	// with less and less number of records in request
 	url := fmt.Sprintf(`https://catalog.gog.com/v1/catalog?limit=%d&page=%d`,
 		count, page)
-	start := time.Now()
 	response, err := http.Get(url)
 	if err != nil {
 		return goger.CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
 	}
-	took := time.Since(start)
 	defer response.Body.Close()
 	// Incremental rollback. GOG folks seemed not happy with big queries and now
 	// request for 1000 games fails with 502 error. Try to cut down this number in future
@@ -147,7 +145,8 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 		return goger.CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	log.Printf("Fetched: %d games on page: %d took: %v\n", len(resp.Products), page, took)
+	// Save for debug after adding logging lib
+	// log.Printf("Fetched: %d games on page: %d took: %v\n", len(resp.Products), page, took)
 	return resp, nil
 }
 
@@ -247,11 +246,10 @@ func (r *reviewer) downloadPage(gameID, title string, skip, total int) (int, err
 
 			if l := len(resp.Embedded.Reviews); l > 0 {
 				if fails > 0 {
-					log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v with: %d fails",
-						l, resp.ReviewCount, i, resp.Pages, title, took, fails)
+					log.Printf("Fetched: %d reviews of: %s in: %v with: %d fails",
+						l, title, took, fails)
 				} else {
-					log.Printf("Fetched: %d/%d reviews from page: %d/%d of: %s in: %v",
-						l, resp.ReviewCount, i, resp.Pages, title, took)
+					log.Printf("Fetched: %d reviews of: %s in: %v", l, title, took)
 				}
 			}
 			downloaded += l
@@ -273,20 +271,12 @@ func (r *reviewer) downloadPage(gameID, title string, skip, total int) (int, err
 	}()
 
 	err1, err2 := <-errs, <-errs
-	if err := firstNonNil(err1, err2); err != nil {
-		cancel()
-		return -1, fmt.Errorf("failed to download reviews: %v", err)
-	}
-	return downloaded, nil
-}
-
-func firstNonNil(errors ...error) error {
-	for _, err := range errors {
+	for _, err := range []error{err1, err2} {
 		if err != nil {
-			return err
+			return -1, fmt.Errorf("failed to download reviews: %v", err)
 		}
 	}
-	return nil
+	return downloaded, nil
 }
 
 // fetchReviews returns up to limit of reviews for game with gameID on page.

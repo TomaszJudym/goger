@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 	"github.com/tomaszjudym/goger"
 )
@@ -30,8 +33,11 @@ type ReviewsPage struct {
 	TotalPages int
 }
 
+const pageSize = 100
+
 var (
-	db Repo
+	db  Repo
+	rdb *redis.Client
 )
 
 func init() {
@@ -40,6 +46,12 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to connect to db: %v", err)
 	}
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "",
+		DB:       0, // Use default DB
+	})
 }
 
 func main() {
@@ -59,40 +71,93 @@ func handlerGames(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
-	start := time.Now()
-	gamesCount, err := db.CountGames()
-	if err != nil {
-		log.Printf("Failed to count games: %v", err)
-		http.Error(w, "Internal server Error", http.StatusInternalServerError)
-		return
-	}
-	pagesCount := gamesCount / 50
+	var games []goger.UIGame
+	var pagesCount int
+	errs := make(chan error, 2)
 
-	if page > pagesCount {
-		page = 1
-	}
+	go func() {
+		var err error
+		games, err = getGamesWithRevsCount((page-1)*pageSize, pageSize)
+		errs <- err
+	}()
+	go func() {
+		var err error
+		gamesCount, err := getGamesCount()
+		pagesCount = gamesCount / pageSize
+		if page > pagesCount {
+			page = 1
+		}
+		errs <- err
+	}()
 
-	// Fetch games with reviews count from the database
-	start = time.Now()
-	games, err := db.GamesWithReviewsCount((page-1)*50, 50)
-	if err != nil {
-		log.Printf("Failed to count games reviews offset: %d: %v", (page-1)*50, err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
+	for i := 0; i < cap(errs); i++ {
+		select {
+		case err = <-errs:
+			if err != nil {
+				log.Printf("Failed to get games: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			log.Printf("Timeout 10s getting games")
+			http.Error(w, "Timeout getting games", http.StatusInternalServerError)
+			return
+		}
 	}
-	took := time.Since(start)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	var revs int
-	for _, g := range games {
-		revs += g.ReviewsCount
-	}
-	log.Printf("Fetched page: %d of: %d games with: %d reviews in in: %v",
-		page, gamesCount, revs, took)
 
 	renderGames(w, PageGames{Games: games, TotalPages: pagesCount})
+}
+
+func getGamesCount() (int, error) {
+	const gamesCountKey = `games:count`
+	var gamesCount int
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	val, err := rdb.Get(ctx, gamesCountKey).Result()
+	if err == nil {
+		gamesCount, err = strconv.Atoi(val)
+		if err != nil {
+			err = fmt.Errorf("failed to parse games count from cache: %w", err)
+		}
+	}
+	if err != nil {
+		if err != redis.Nil {
+			log.Printf("Failed to get games count from cache: %v", err)
+		}
+		var err2 error
+		gamesCount, err2 = db.CountGames()
+		if err2 != nil {
+			return 0, fmt.Errorf("failed to count games from db: %w", err2)
+		}
+		if err3 := rdb.Set(ctx, gamesCountKey, gamesCount, 10*time.Minute).Err(); err3 != nil {
+			log.Printf("Failed to cache games count: %v", err3)
+		}
+	}
+	return gamesCount, nil
+}
+
+func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
+	const gamesKey = `games-with-reviews:count:%d:%d`
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	val, err := rdb.Get(ctx, fmt.Sprintf(gamesKey, offset, limit)).Result()
+	if err == nil {
+		var games []goger.UIGame
+		if err = json.Unmarshal([]byte(val), &games); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal games from cache: %w", err)
+		}
+		return games, nil
+	}
+	games, err := db.GamesWithReviewsCount(offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get games from db: %w", err)
+	}
+	gamesBytes, err := json.Marshal(games)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal games from db: %w", err)
+	}
+	if err := rdb.Set(ctx, fmt.Sprintf(gamesKey, offset, limit), string(gamesBytes), 10*time.Minute).Err(); err != nil {
+		return nil, fmt.Errorf("failed to set games in cache: %w", err)
+	}
+	return games, nil
 }
 
 func handlerReviews(w http.ResponseWriter, r *http.Request) {
@@ -120,40 +185,65 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	}
 	var reviews goger.RepoReviews
 	var count int
-	errs := make(chan error, 2)
-	start := time.Now()
+	reviewsKey := fmt.Sprintf("reviews:%d:page:%d", id, page)
 
-	go func() {
-		var err error
-		reviews, err = db.ReviewsForGame(id, (page-1)*50, 50)
-		if err != nil {
-			errs <- fmt.Errorf("failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
-			return
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	reviewsJson, err := rdb.Get(ctx, reviewsKey).Result()
+	if err == redis.Nil {
+		// Cache miss, fetch from DB and cache it
+		errs := make(chan error, 2)
+		start := time.Now()
+
+		go func() {
+			var err error
+			reviews, err = db.ReviewsForGame(id, (page-1)*50, 50)
+			if err != nil {
+				errs <- fmt.Errorf("failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
+				return
+			}
+			log.Printf("Fetched: %d reviews for: %d", len(reviews), id)
+			errs <- nil
+		}()
+
+		go func() {
+			var err error
+			count, err = db.GameReviewsCount(gameID)
+			if err != nil {
+				errs <- fmt.Errorf("failed to count reviews of game: %s, err: %v", gameID, err)
+				return
+			}
+			log.Printf("Counted: %d reviews", count)
+			errs <- nil
+		}()
+
+		for i := 0; i < 2; i++ {
+			err := <-errs
+			if err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				log.Print(err)
+				return
+			}
 		}
-		log.Printf("Fetched: %d reviews for: %d", len(reviews), id)
-		errs <- nil
-	}()
-
-	go func() {
-		var err error
-		count, err = db.GameReviewsCount(gameID)
-		if err != nil {
-			errs <- fmt.Errorf("failed to count reviews of game: %s, err: %v", gameID, err)
-			return
-		}
-		log.Printf("Counted: %d reviews", count)
-		errs <- nil
-	}()
-
-	for i := 0; i < 2; i++ {
-		err := <-errs
+		log.Printf("Completed db fetches in: %v", time.Since(start))
+		reviewsJson, err := json.Marshal(reviews)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Print(err)
+			log.Println("Failed to unmarshal reviews:", err)
+			return
+		}
+		rdb.Set(ctx, reviewsKey, reviewsJson, 30*time.Minute) // Adjust TTL as needed
+	} else if err != nil {
+		log.Printf("Error getting reviews from cache: %v", err)
+		// Handle error
+	} else {
+		// Cache hit, deserialize JSON to reviews
+		if err = json.Unmarshal([]byte(reviewsJson), &reviews); err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			log.Println("Failed to unmarshal reviews from cache:", err)
 			return
 		}
 	}
-	log.Printf("Completed fetches in: %v", time.Since(start))
 
 	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
 }
