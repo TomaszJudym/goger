@@ -98,31 +98,31 @@ type nameSlugPair struct {
 
 // ProductRepo represents the simplified representation for PostgreSQL storage
 type ProductRepo struct {
-	ID                       string         `db:"id"`
-	Slug                     string         `db:"slug"`
-	Features                 pq.StringArray `db:"features"`
-	Screenshots              pq.StringArray `db:"screenshots"`
-	UserPreferredLangCode    string         `db:"user_preferred_language_code"`
-	UserPreferredLangInAudio bool           `db:"user_preferred_language_in_audio"`
-	UserPreferredLangInText  bool           `db:"user_preferred_language_in_text"`
-	ReleaseDate              string         `db:"release_date"`
-	StoreReleaseDate         string         `db:"store_release_date"`
-	ProductType              string         `db:"product_type"`
-	Title                    string         `db:"title"`
-	CoverHorizontal          string         `db:"cover_horizontal"`
-	CoverVertical            string         `db:"cover_vertical"`
-	Developers               pq.StringArray `db:"developers"`
-	Publishers               pq.StringArray `db:"publishers"`
-	OperatingSystems         pq.StringArray `db:"operating_systems"`
-	PriceFinal               float64        `db:"price_final"`
-	PriceBase                float64        `db:"price_base"`
-	PriceCurrency            string         `db:"price_currency"`
-	PriceDiscount            float64        `db:"price_discount"`
-	ProductState             string         `db:"product_state"`
-	Genres                   pq.StringArray `db:"genres"`
-	Tags                     pq.StringArray `db:"tags"`
-	ReviewsRating            int            `db:"reviews_rating"`
-	UpdatedAt                []byte         `db:"updated_at"`
+	ID                       string         `db:"id" json:"id"`
+	Slug                     string         `db:"slug" json:"slug"`
+	Features                 pq.StringArray `db:"features" json:"features"`
+	Screenshots              pq.StringArray `db:"screenshots" json:"screenshots"`
+	UserPreferredLangCode    string         `db:"user_preferred_language_code" json:"userPreferredLanguage,omitempty"`
+	UserPreferredLangInAudio bool           `db:"user_preferred_language_in_audio" json:"userPreferredLanguageInAudio,omitempty"`
+	UserPreferredLangInText  bool           `db:"user_preferred_language_in_text" json:"userPreferredLanguageInText,omitempty"`
+	ReleaseDate              string         `db:"release_date" json:"releaseDate"`
+	StoreReleaseDate         string         `db:"store_release_date" json:"storeReleaseDate"`
+	ProductType              string         `db:"product_type" json:"productType"`
+	Title                    string         `db:"title" json:"title"`
+	CoverHorizontal          string         `db:"cover_horizontal" json:"coverHorizontal"`
+	CoverVertical            string         `db:"cover_vertical" json:"coverVertical"`
+	Developers               pq.StringArray `db:"developers" json:"developers"`
+	Publishers               pq.StringArray `db:"publishers" json:"publishers"`
+	OperatingSystems         pq.StringArray `db:"operating_systems" json:"operatingSystems"`
+	PriceFinal               float64        `db:"price_final" json:"price,omitempty"`
+	PriceBase                float64        `db:"price_base" json:"priceBase,omitempty"`
+	PriceCurrency            string         `db:"price_currency" json:"priceCurrency,omitempty"`
+	PriceDiscount            float64        `db:"price_discount" json:"priceDiscount,omitempty"`
+	ProductState             string         `db:"product_state" json:"productState"`
+	Genres                   pq.StringArray `db:"genres" json:"genres"`
+	Tags                     pq.StringArray `db:"tags" json:"tags"`
+	ReviewsRating            int            `db:"reviews_rating" json:"reviewsRating"`
+	UpdatedAt                []byte         `db:"updated_at" json:"-"`
 }
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
@@ -413,27 +413,27 @@ func toRepoLinks(respLinks any) (AvatarLinks, error) {
 }
 
 type ReviewRepo struct {
-	ID                 string         `db:"id"`
-	ProductID          int            `db:"product_id"`
-	RatingValue        int            `db:"rating_value"`
-	Title              string         `db:"title"`
-	Description        string         `db:"description"`
-	Language           string         `db:"language"`
-	ReviewerID         string         `db:"reviewer_id"`
-	ReviewerUsername   string         `db:"reviewer_username"`
-	AvatarGogImageID   string         `db:"avatar_gog_image_id"`
-	AvatarLarge        string         `db:"avatar_large"`
-	AvatarSDKImg184    string         `db:"avatar_sdk_img_184"`
-	AvatarMenuBig      string         `db:"avatar_menu_big"`
-	CountersGames      int            `db:"counters_games"`
-	CountersReviews    int            `db:"counters_reviews"`
-	Labels             pq.StringArray `db:"labels"`
-	Downvotes          int            `db:"downvotes"`
-	Upvotes            int            `db:"upvotes"`
-	ReviewDate         string         `db:"review_date"`
-	CreationDate       string         `db:"creation_date"`
-	InternalUpdateDate string         `db:"internal_update_date"`
-	UpdatedAt          []byte         `db:"updated_at"`
+	ID                 string         `db:"id" json:"id"`
+	ProductID          int            `db:"product_id" json:"productId"`
+	RatingValue        int            `db:"rating_value" json:"ratingValue"`
+	Title              string         `db:"title" json:"title"`
+	Description        string         `db:"description" json:"description"`
+	Language           string         `db:"language" json:"language"`
+	ReviewerID         string         `db:"reviewer_id" json:"reviewerId"`
+	ReviewerUsername   string         `db:"reviewer_username" json:"reviewerUsername"`
+	AvatarGogImageID   string         `db:"avatar_gog_image_id" json:"avatarGogImageId"`
+	AvatarLarge        string         `db:"avatar_large" json:"avatarLarge"`
+	AvatarSDKImg184    string         `db:"avatar_sdk_img_184" json:"avatarSdkImg184"`
+	AvatarMenuBig      string         `db:"avatar_menu_big" json:"avatarMenuBig"`
+	CountersGames      int            `db:"counters_games" json:"countersGames"`
+	CountersReviews    int            `db:"counters_reviews" json:"countersReviews"`
+	Labels             pq.StringArray `db:"labels" json:"labels"`
+	Downvotes          int            `db:"downvotes" json:"downvotes"`
+	Upvotes            int            `db:"upvotes" json:"upvotes"`
+	ReviewDate         string         `db:"review_date" json:"reviewDate"`
+	CreationDate       string         `db:"creation_date" json:"creationDate"`
+	InternalUpdateDate string         `db:"internal_update_date" json:"internalUpdateDate"`
+	UpdatedAt          []byte         `db:"updated_at" json:"updatedAt"`
 }
 
 func (r ReviewRepo) ToUI() UIReview {

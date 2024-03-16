@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/tomaszjudym/goger"
 )
 
 func main() {
@@ -43,5 +45,29 @@ func listenForDBChanges(connStr string) {
 	for {
 		n := <-conn.Notify
 		log.Printf("Received data change notification: %s", n.Extra)
+		switch n.Channel {
+		case "games_changes":
+			var game goger.ProductRepo
+			if err = json.Unmarshal([]byte(n.Extra), &game); err != nil {
+				log.Printf("Failed to unmarshal games: %s, error: %v", n.Extra, err)
+			}
+			b, err := json.MarshalIndent(game, "\t,", "\t")
+			if err != nil {
+				log.Printf("Failed to marshal indent game: %v", err)
+			}
+			fmt.Printf("UPDATE OF GAME:\n%s", string(b))
+		case "reviews_changes":
+			var review goger.ReviewRepo
+			if err = json.Unmarshal([]byte(n.Extra), &review); err != nil {
+				log.Printf("Failed to unmarshal reviews: %s, error: %v", n.Extra, err)
+			}
+			b, err := json.MarshalIndent(review, "\t,", "\t")
+			if err != nil {
+				log.Printf("Failed to marshal indent review: %v", err)
+			}
+			fmt.Printf("UPDATE OF REVIEW:\n%s", string(b))
+		default:
+			log.Printf("Unknown channel: %s", n.Channel)
+		}
 	}
 }

@@ -169,6 +169,7 @@ func (r *reviewer) download(title, gameID string) error {
 	// Every response contains total review count.
 	// Get single review to figure out how much reviews
 	// there are for this game in total.
+	start := time.Now()
 	resp, _, _, err := r.fetchReviews(context.Background(), gameID, 1, 1)
 	if err != nil {
 		return fmt.Errorf("failed to fetch single review "+
@@ -196,12 +197,7 @@ func (r *reviewer) download(title, gameID string) error {
 	}
 
 	if inDB != newInDB {
-		_ = 5
-		// ^^ Shut up about empty branch
-		// TODO: Make it just a debug print
-		/*log.Printf("downloaded: %d reviews, %s's review count in DB "+
-		"changed from: %d to: %d in: %v",
-		downloadedCount, title, inDB, newInDB, time.Since(start)) */
+		log.Printf("%s was: %d in db, now: %d in: %v", title, inDB, newInDB, time.Since(start))
 	}
 
 	return nil
