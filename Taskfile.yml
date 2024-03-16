@@ -14,3 +14,6 @@ tasks:
       - pg_dump --host localhost --port 5432 --username goger --format plain --file backups/reviews --table public.reviews goger
       - lrzip -z backups/reviews backups/games
       - rm -f backups/games backups/reviews
+  kill:
+    cmds:
+      - docker-compose down --remove-orphans --volumes

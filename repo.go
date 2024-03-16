@@ -8,7 +8,6 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
 )
 
 type GamesRepo struct {
@@ -19,37 +18,8 @@ type GamesRepo struct {
 	reviewsByGame      *sqlx.Stmt
 }
 
-func listenForDBChanges(connStr string) {
-	conn := pq.NewListener(connStr, 10*time.Second, time.Minute, nil)
-	defer conn.Close()
-
-	err := conn.Listen("games_changes")
-	if err != nil {
-		log.Fatalf("Error listening on channel 'games_changes': %v", err)
-	}
-
-	err = conn.Listen("reviews_changes")
-	if err != nil {
-		log.Fatalf("Error listening on channel 'reviews_changes': %v", err)
-	}
-
-	for {
-		select {
-		case n := <-conn.Notify:
-			log.Printf("Received data change notification: %s", n.Extra)
-		case <-time.After(90 * time.Second):
-			log.Println("Checking for notifications...")
-			go func() {
-				if err := conn.Ping(); err != nil {
-					log.Fatalf("Error pinging database: %v", err)
-				}
-			}()
-		}
-	}
-}
-
 func NewRepo() (*GamesRepo, error) {
-	var (
+	const (
 		dbHost     = "pg"
 		dbPort     = "5432"
 		dbUser     = "goger"
@@ -59,9 +29,6 @@ func NewRepo() (*GamesRepo, error) {
 	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
 		"dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	// TODO: Drop after test
-	go listenForDBChanges(connectionString)
 
 	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {

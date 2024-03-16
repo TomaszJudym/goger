@@ -20,7 +20,7 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - goger-network
+      - db-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready", "-d", "goger"]
       interval: 5s
@@ -33,7 +33,13 @@ services:
     ports:
       - "6379:6379"
     networks:
-      - goger-network
+      - redis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 2s
 
   fetcher:
     build:
@@ -44,7 +50,18 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - goger-network
+      - db-network
+
+  updater:
+    build:
+      context: .
+      dockerfile: Dockerfile-update
+    container_name: updater
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - db-network
 
   fronter:
     build:
@@ -54,11 +71,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
     networks:
-      - goger-network
+      - db-network
+      - redis-network
 
 networks:
-  goger-network:
+  db-network:
     driver: bridge
+  redis-network:
+    driver: bridge
+
+
+

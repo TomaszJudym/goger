@@ -114,6 +114,8 @@ CREATE TRIGGER maintain_queue_size_trigger
 AFTER INSERT ON run
 FOR EACH STATEMENT EXECUTE FUNCTION maintain_queue_size();
 
+
+-- Notify about changes in games table
 CREATE OR REPLACE FUNCTION notify_games_change() RETURNS TRIGGER AS $$
 BEGIN
   PERFORM pg_notify('games_changes', row_to_json(NEW)::text);
@@ -124,3 +126,17 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER games_after_change
 AFTER INSERT OR UPDATE OR DELETE ON games
 FOR EACH ROW EXECUTE FUNCTION notify_games_change();
+
+
+-- Notify about changes in reviews table
+CREATE OR REPLACE FUNCTION notify_reviews_change() RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM pg_notify('reviews_changes', row_to_json(NEW)::text);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reviews_after_change
+AFTER INSERT OR UPDATE OR DELETE ON reviews
+FOR EACH ROW EXECUTE FUNCTION notify_reviews_change();
+
