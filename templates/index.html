@@ -63,9 +63,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game Reviews</title>
 </head>
+<script>
+    // Function to store the page number in localStorage
+    function rememberPageNumber(pageNumber) {
+        var urlParams = new URLSearchParams(window.location.search); // Get the URL query parameters
+            var pageNumber = urlParams.get('page'); // Extract the value of the 'page' parameter
+            if (pageNumber) {
+                localStorage.setItem('gamesPageNumber', pageNumber);
+            }
+    }
+</script>
 <body>
     <div class="container">
-        <table class="cyberpunk-table">
+        <table>
             <thead>
                 <tr>
                     <th>ID</th>
@@ -76,7 +86,7 @@
             <tbody>
                 {{range .Games}}
                 <tr>
-                    <td><a href="/games/{{.ID}}/reviews">{{.ID}}</a></td>
+                    <td><a href="/games/{{.ID}}/reviews" onclick="rememberPageNumber()">{{.ID}}</a></td>
                     <td>{{.Title}}</td>
                     <td>{{.ReviewsCount}}</td>
                 </tr>

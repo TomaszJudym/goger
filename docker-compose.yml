@@ -1,4 +1,3 @@
-version: '3'
 services:
   postgres:
     image: postgres:latest
@@ -16,30 +15,30 @@ services:
       - ./postgres-data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
 # Custom config
-#      - ./postgresql.conf:/var/lib/postgresql/data/postgresql.conf
-    ports:
-      - "5432:5432"
-    networks:
-      - db-network
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready", "-d", "goger"]
       interval: 5s
       timeout: 30s
       retries: 5
       start_period: 2s 
+    ports:
+      - "5432:5432"
+    networks:
+      - db-network
 
   redis:
     image: redis:latest
     ports:
       - "6379:6379"
-    networks:
-      - redis-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 30s
       retries: 5
       start_period: 2s
+    networks:
+      - redis-network
 
   fetcher:
     build:
@@ -63,6 +62,19 @@ services:
     networks:
       - db-network
 
+  nginx:
+    image: nginx:bookworm
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - fronter
+    networks:
+      - nginx-network
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - nginx_logs:/var/log/nginx
+
   fronter:
     build:
       context: .
@@ -73,17 +85,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8080:8080"
     networks:
       - db-network
       - redis-network
+      - nginx-network
 
 networks:
   db-network:
-    driver: bridge
   redis-network:
-    driver: bridge
+  nginx-network:
 
+volumes:
+  nginx_logs:
 
 

@@ -125,6 +125,39 @@ type ProductRepo struct {
 	UpdatedAt                []byte         `db:"updated_at" json:"-"`
 }
 
+// UnmarshalJSON is a custom unmarshaller for ProductRepo which handles ID wether it's string or int
+func (r *ProductRepo) UnmarshalJSON(b []byte) error {
+	type alias ProductRepo
+
+	aux := &struct {
+		ID any `json:"id"`
+		*alias
+	}{
+		ID:    0,
+		alias: &alias{},
+	}
+
+	// TODO: Fix this unmarshalling
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return fmt.Errorf("UNMARSHAL FAILED XD: %w", err)
+	}
+
+	switch v := aux.ID.(type) {
+	case int:
+		r.ID = fmt.Sprintf("%d", v)
+	case string:
+		r.ID = v
+	case float64:
+		r.ID = fmt.Sprintf("%f", v)
+	default:
+		return fmt.Errorf("unsupported ID type: %T", v)
+	}
+
+	*r = ProductRepo(*aux.alias)
+
+	return nil
+}
+
 // MapProductToRepo maps the original Product to the simplified ProductRepo
 func (p Product) ToRepo(ts time.Time) (ProductRepo, error) {
 	// Prices can arrive empty for some reason
@@ -441,17 +474,18 @@ func (r *ReviewRepo) UnmarshalJSON(b []byte) error {
 	type alias ReviewRepo
 
 	aux := &struct {
-		ID int `json:"id"`
+		ID any `json:"id"`
 		*alias
 	}{
-		alias: (*alias)(r),
+		ID:    0,
+		alias: &alias{},
 	}
-
+	// TODO: Fix this unmarshalling
 	if err := json.Unmarshal(b, &aux); err != nil {
-		return err
+		return fmt.Errorf("UNMARSHAL FAILED XD: %w", err)
 	}
 
-	r.ID = strconv.Itoa(aux.ID)
+	*r = ReviewRepo(*aux.alias)
 
 	return nil
 }

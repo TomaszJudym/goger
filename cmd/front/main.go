@@ -197,7 +197,6 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	if err == redis.Nil {
 		// Cache miss, fetch from DB and cache it
 		errs := make(chan error, 2)
-		start := time.Now()
 
 		go func() {
 			var err error
@@ -206,7 +205,6 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 				errs <- fmt.Errorf("failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
 				return
 			}
-			log.Printf("Fetched: %d reviews for: %d", len(reviews), id)
 			errs <- nil
 		}()
 
@@ -217,7 +215,6 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 				errs <- fmt.Errorf("failed to count reviews of game: %s, err: %v", gameID, err)
 				return
 			}
-			log.Printf("Counted: %d reviews", count)
 			errs <- nil
 		}()
 
@@ -229,7 +226,6 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		log.Printf("Completed db fetches in: %v", time.Since(start))
 		reviewsJson, err := json.Marshal(reviews)
 		if err != nil {
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -250,7 +246,7 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
-	log.Printf("Served reviews in: %v IP: %s URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
+	log.Printf("Served %d reviews in: %v IP: %s URI: %s", len(reviews), time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
 func renderGames(w http.ResponseWriter, page PageGames) {

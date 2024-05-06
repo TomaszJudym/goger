@@ -10,6 +10,12 @@
             color: #96dced;
         }
 
+        .container {
+            margin: 0 auto;
+            max-width: 1280px;
+            width: 100%;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -34,31 +40,37 @@
             color: #96dced;
         }
 
-        .pagination {
-            display: flex;
-            justify-content: center;
-            max-width: 200px;
-        }
-
-        .pagination a {
+        .page-button {
             margin: 0 5px;
             padding: 5px 10px;
             background: #272727;
             color: #96dced;
         }
 
-        .pagination a:hover {
+        .page-button:hover {
             background: #2f2f2f;
         }
+
     </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reviews</title>
 </head>
+<script>
+    // Function to navigate back to the Games Page with the remembered query parameter
+    function goToGamesPage() {
+        var pageNumber = localStorage.getItem('gamesPageNumber'); // Get the stored page number
+        if (pageNumber) {
+            window.location.href = 'http://localhost/games?page=' + pageNumber; // Redirect to the games page with the remembered query parameter
+        } 
+    }
+</script>
 <body>
-    <table class="cyberpunk-table">
-        <thead>
-            <tr>
+    <div class="container">
+        <button onclick="goToGamesPage='.'">Back to Games</button>
+        <table>
+            <thead>
+                <tr>
                     <th>Title</th>
                     <th>Rating</th>
                     <th>Description</th>
@@ -79,7 +91,6 @@
                 <tr>
                     <td>{{.Title}}</td>
                     <td>{{.RatingValue}}</td>
-                    <td>{{.Description}}</td>
                     <td>{{.Language}}</td>
                     <td>{{.ReviewerUsername}}</td>
                     <td>{{.CountersGames}}</td>
@@ -91,13 +102,17 @@
                     <td>{{.CreationDate}}</td>
                     <td>{{.InternalUpdateDate}}</td>
                 </tr>
+                <tr>
+                    <td colspan="14">{{.Description}}</td>
+                </tr>
                 {{end}}
             </tbody>
         </table>
-        <div class="pagination">
-        {{range $i := seq .TotalPages}}
-            <a href="?page={{$i}}">{{$i}}</a>
-        {{end}}
+        <button class="pagination">
+            {{range $i := seq .TotalPages}}
+                <button class="page-button" onclick="location.href='?page={{$i}}'">{{$i}}</button>
+            {{end}}
+        </button>
     </div>
 </body>
 </html>
