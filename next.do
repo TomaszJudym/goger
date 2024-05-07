@@ -54,4 +54,7 @@ Found on cyberpunk phantom liberty store page.
 
 - Redis: to cache responses
 
-- Just fix UI
+- Just fix UI, amount of reviews is not displayed correctly.
+
+- Make plan what to display finally.
+Better charts with some funny analytics

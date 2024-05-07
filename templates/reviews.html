@@ -60,7 +60,6 @@
     // Function to navigate back to the Games Page with the remembered query parameter
     function goToGamesPage() {
         var pageNumber = localStorage.getItem('gamesPageNumber'); // Get the stored page number
-        console.log("going back to apge: " + pageNumber);
         if (pageNumber) {
             window.location.href = 'http://localhost/games?page=' + pageNumber; // Redirect to the games page with the remembered query parameter
         } 

@@ -131,7 +131,11 @@ FOR EACH ROW EXECUTE FUNCTION notify_games_change();
 -- Notify about changes in reviews table
 CREATE OR REPLACE FUNCTION notify_reviews_change() RETURNS TRIGGER AS $$
 BEGIN
-  PERFORM pg_notify('reviews_changes', row_to_json(NEW)::text);
+  PERFORM pg_notify('reviews_changes', json_build_object(
+    'product_id', NEW.product_id,
+    'title', NEW.title,
+    'description_len', length(NEW.description),
+  )::text);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

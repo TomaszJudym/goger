@@ -137,16 +137,17 @@ func getGamesCount() (int, error) {
 }
 
 func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
-	const gamesKey = `games-with-reviews:count:%d:%d`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	const gamesKey = `games-with-reviews:count:%d:%d`
 	val, err := rdb.Get(ctx, fmt.Sprintf(gamesKey, offset, limit)).Result()
 	if err == nil {
 		var games []goger.UIGame
 		if err = json.Unmarshal([]byte(val), &games); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal games from cache: %w", err)
 		}
+		fmt.Println("CACHE HIT for games", offset, limit)
 		return games, nil
 	}
 	games, err := db.GamesWithReviewsCount(offset, limit)

@@ -27,9 +27,9 @@ func main() {
 }
 
 type reviewInfo struct {
-	ProductID   int    `json:"product_id"`
-	Description string `json:"description"`
-	Title       string `json:"title"`
+	ProductID      int    `json:"product_id"`
+	Title          string `json:"title"`
+	DescriptionLen int    `json:"description_len"`
 }
 
 func listenForDBChanges(connStr string) {
@@ -74,9 +74,8 @@ func listenForDBChanges(connStr string) {
 				log.Printf("Failed to get game title for review with product_id: %d: %v",
 					info.ProductID, err)
 			}
-			txtLen := len(info.Description)
 			fmt.Printf("UPDATE OF REVIEW game: %s, len: %d, title: %s\n",
-				gameTitle, txtLen, info.Title)
+				gameTitle, info.DescriptionLen, info.Title)
 		default:
 			log.Printf("Unknown channel: %s", n.Channel)
 		}
