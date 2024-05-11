@@ -118,7 +118,11 @@ FOR EACH STATEMENT EXECUTE FUNCTION maintain_queue_size();
 -- Notify about changes in games table
 CREATE OR REPLACE FUNCTION notify_games_change() RETURNS TRIGGER AS $$
 BEGIN
-  PERFORM pg_notify('games_changes', row_to_json(NEW)::text);
+  PERFORM pg_notify('games_changes', json_build_object(
+    'id', NEW.id,
+    'title', NEW.title,
+    'reviews_count', NEW.reviews_count
+  )::text);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -134,7 +138,7 @@ BEGIN
   PERFORM pg_notify('reviews_changes', json_build_object(
     'product_id', NEW.product_id,
     'title', NEW.title,
-    'description_len', length(NEW.description),
+    'description_len', length(NEW.description)
   )::text);
   RETURN NEW;
 END;
