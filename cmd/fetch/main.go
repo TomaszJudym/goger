@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/tomaszjudym/goger"
@@ -63,23 +64,24 @@ func main() {
 func run(db Repo) error {
 	// TODO: Make configurable
 	const pageSize = 110
-	productsCount := 110
+	fetchedInReq := 110
 	page := 1
 	total := 0
 	start := time.Now()
 	// TODO: Config 3
 	var group errgroup.Group
 	group.SetLimit(3)
-
-	for ; productsCount == pageSize; page++ {
+	// As long number of fetched games is equal to pageSize,
+	// there still can be more games to fetch.
+	for ; fetchedInReq == pageSize; page++ {
 		// Fetch batch of games from GOG API
 		resp, err := fetchGames(page, pageSize)
 		if err != nil {
 			return fmt.Errorf("failed to get page: %d with: %d games: %w", page, pageSize, err)
 		}
 		// Track how many were fetched
-		productsCount = len(resp.Products)
-		total += productsCount
+		fetchedInReq = len(resp.Products)
+		total += fetchedInReq
 		// Save them to db
 		pr, err := resp.Products.ToRepo(time.Now())
 		if err != nil {
@@ -103,7 +105,7 @@ func run(db Repo) error {
 		return fmt.Errorf("failed to download reviews on games page: %d: %w",
 			page, err)
 	}
-
+	// Save to db when last run finished.
 	end := time.Now()
 	if err := db.CreateRun(goger.RunRepo{
 		StartTs: start,
@@ -158,9 +160,6 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	if err = json.NewDecoder(response.Body).Decode(&resp); err != nil {
 		return goger.CatalogResp{}, fmt.Errorf("failed to decode response: %w", err)
 	}
-
-	// Save for debug after adding logging lib
-	// log.Printf("Fetched: %d games on page: %d took: %v\n", len(resp.Products), page, took)
 	return resp, nil
 }
 
@@ -170,40 +169,46 @@ func (r *reviewer) download(title, gameID string) error {
 	// Every response contains total review count.
 	// Get single review to figure out how many reviews
 	// there are for this game in total.
-	id := rand.Intn(1000)
-	start := time.Now()
-	resp, err := r.fetchReviews(context.Background(), gameID, 1, 1)
-	if err != nil {
-		return fmt.Errorf("failed to fetch single review "+
-			"for : %s: %w", gameID, err)
+	var (
+		group  errgroup.Group
+		inDB   int
+		onPage int
+		err    error
+	)
+	// TODO: Add context for handling timeouts
+	group.Go(func() error {
+		var dbErr error
+		inDB, dbErr = r.reviewsCountInDB(gameID)
+		return dbErr
+	})
+	group.Go(func() error {
+		var pgErr error
+		onPage, pgErr = r.reviewsCountOnPage(gameID)
+		return pgErr
+	})
+	if err = group.Wait(); err != nil {
+		return fmt.Errorf("failed to get review count: %w", err)
 	}
-	totalReviews := resp.ReviewCount
 
-	// Check how many reviews are in db.
-	inDB, err := r.repo.GameReviewsCount(gameID)
-	if err != nil {
-		return fmt.Errorf("failed to count reviews in db: %w", err)
-	}
 	// Nothing to download or already have everything downloaded
-	if totalReviews == 0 || inDB == totalReviews {
+	if onPage == 0 || inDB == onPage {
 		return nil
 	}
 
-	// Insert
-
-	log.Printf("%s has: %d reviews in db, out of: %d fetched in: %v, %d missing",
-		title, inDB, totalReviews, time.Since(start), totalReviews-inDB)
+	l := log.New(os.Stdout, fmt.Sprintf("worker: %d: ", rand.Intn(1000)), log.LstdFlags)
+	start := time.Now()
+	l.Printf("%s has: %d reviews in db, out of: %d fetched in: %v, %d missing",
+		title, inDB, onPage, time.Since(start), onPage-inDB)
 
 	// Keep downloading reviews until no new reviews are returned.
 	// Context will be cancelled after 10min of no progress.
-	pageSize := 150
+	const pageSize = 150
 	reviewsChan := make(chan goger.Reviews, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	var group errgroup.Group
-	// This routine fetched reviews for this game from web page.
+	// This routine fetches reviews for this game from web page.
 	group.Go(func() error {
 		defer close(reviewsChan)
 		for {
@@ -212,7 +217,8 @@ func (r *reviewer) download(title, gameID string) error {
 				return fmt.Errorf("context cancelled after 10 min of no progress")
 			default:
 				page := int(math.Ceil(float64(inDB)/float64(pageSize))) + 1
-				fmt.Printf("worker %d fetching page %d of %s\n", id, page, title)
+				// TODO: Turn into debug log
+				l.Printf("fetching page %d of %s\n", page, title)
 				resp, err := r.fetchReviews(ctx, gameID, page, pageSize)
 				if err != nil {
 					return fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
@@ -221,24 +227,23 @@ func (r *reviewer) download(title, gameID string) error {
 				if len(resp.Embedded.Reviews) == 0 {
 					return nil
 				}
-				fmt.Printf("worker %d sending to channel page %d of %s\n", id, page, title)
-				reviewsChan <- resp.Embedded.Reviews
-				fmt.Printf("worker %d sent to channel page %d of %s\n", id, page, title)
 				inDB += len(resp.Embedded.Reviews)
+				// TODO: Turn into debug log
+				l.Printf("sending to channel page %d of %s got %d/%d\n", page, title, inDB, onPage)
+				reviewsChan <- resp.Embedded.Reviews
 			}
 		}
 	})
 	// This routine saves them to db.
 	group.Go(func() error {
 		for reviews := range reviewsChan {
-			fmt.Printf("worker %d writing page of %s\n", id, title)
 			_, err = r.repo.CreateReviews(reviews.ToRepo(time.Now()))
 			if err != nil {
 				// TODO: Kill also first routine when this error occurs
 				return fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
 					len(reviews), title, err)
 			}
-			fmt.Printf("worker %d page of %s written\n", id, title)
+			l.Printf("page of %s written\n", title)
 		}
 		return nil
 	})
@@ -246,9 +251,27 @@ func (r *reviewer) download(title, gameID string) error {
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("failed to download reviews: %w", err)
 	}
-	log.Printf("worker %s done in: %v", title, time.Since(start))
+	l.Printf("%s done in: %v", title, time.Since(start))
 
 	return nil
+}
+
+func (r *reviewer) reviewsCountOnPage(gameID string) (int, error) {
+	resp, err := r.fetchReviews(context.Background(), gameID, 1, 1)
+	if err != nil {
+		return -1, fmt.Errorf("failed to fetch single review "+
+			"for : %s: %w", gameID, err)
+	}
+	return resp.ReviewCount, nil
+}
+
+func (r *reviewer) reviewsCountInDB(gameID string) (int, error) {
+	// Check how many reviews are in db.
+	inDB, err := r.repo.GameReviewsCount(gameID)
+	if err != nil {
+		return -1, fmt.Errorf("failed to count reviews in db: %w", err)
+	}
+	return inDB, nil
 }
 
 // fetchReviews returns up to limit of reviews for game with gameID on page.
