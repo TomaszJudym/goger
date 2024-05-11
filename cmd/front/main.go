@@ -55,6 +55,7 @@ func init() {
 }
 
 func main() {
+	http.HandleFunc("/", handlerIndex)
 	http.HandleFunc("/games", handlerGames)
 	http.HandleFunc("/games/", handlerReviews)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -62,6 +63,50 @@ func main() {
 	const port = "8080"
 	log.Printf("Server running on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func handlerIndex(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	// Get page parameter from the query string
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	var games []goger.UIGame
+	var pagesCount int
+	errs := make(chan error, 2)
+
+	go func() {
+		var err error
+		games, err = getGamesWithRevsCount((page-1)*pageSize, pageSize)
+		errs <- err
+	}()
+	go func() {
+		var err error
+		gamesCount, err := getGamesCount()
+		pagesCount = gamesCount / pageSize
+		if page > pagesCount {
+			page = 1
+		}
+		errs <- err
+	}()
+
+	for i := 0; i < cap(errs); i++ {
+		select {
+		case err = <-errs:
+			if err != nil {
+				log.Printf("Failed to get games: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			log.Printf("Timeout 10s getting games")
+			http.Error(w, "Timeout getting games", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	renderIndex(w, PageGames{Games: games, TotalPages: pagesCount})
+	log.Printf("Served games in %v, from IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
 func handlerGames(w http.ResponseWriter, r *http.Request) {
@@ -170,9 +215,9 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	segments := strings.Split(r.URL.Path, "/")
 	l := len(segments)
 	if l != 4 {
-		http.Error(w, fmt.Sprintf("Path should have 4 elements but got %d",
-			l), http.StatusBadRequest)
-		log.Printf("Want 4 path elems got: %d in %v", l, segments)
+		msg := fmt.Sprintf("Want 4 path elems got: %d in %v", l, segments)
+		http.Error(w, msg, http.StatusBadRequest)
+		log.Println(msg)
 		return
 	}
 
@@ -250,10 +295,27 @@ func handlerReviews(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Served %d reviews in: %v IP: %s URI: %s", len(reviews), time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
-func renderGames(w http.ResponseWriter, page PageGames) {
+func renderIndex(w http.ResponseWriter, page PageGames) {
 	tmpl, err := template.New("index.html").
 		Funcs(template.FuncMap{"seq": seq}).
 		ParseFiles("templates/index.html")
+	if err != nil {
+		log.Printf("Failed to parse template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err = tmpl.Execute(w, page); err != nil {
+		log.Printf("Failed to execute template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func renderGames(w http.ResponseWriter, page PageGames) {
+	tmpl, err := template.New("games.html").
+		Funcs(template.FuncMap{"seq": seq}).
+		ParseFiles("templates/games.html")
 	if err != nil {
 		log.Printf("Failed to parse template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

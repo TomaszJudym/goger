@@ -49,4 +49,9 @@ Found on cyberpunk phantom liberty store page.
 4. Avg review length per language.
 5. 5 most popular colors in images.
 6. Developer, numbers of games, % of games
-7. % per developer
+7. % of games per developer
+8. On each game side - chart time to number of reviews
+9. Store thumbnails for games and display them.
+
+NOW: - finish main page which is showing general statistics
+and only below list of games with most reviews.
