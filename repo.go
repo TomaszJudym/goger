@@ -123,12 +123,10 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to build insert query: %w", err)
 	}
-	start := time.Now()
 	res, err := tx.ExecContext(ctx, sql)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute insert query: %w", err)
 	}
-	took := time.Since(start)
 
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
@@ -148,19 +146,15 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to build reviews count update query: %w", err)
 	}
-	updateStart := time.Now()
 	_, err = tx.ExecContext(ctx, sql)
 	if err != nil {
 		return 0, fmt.Errorf("failed to exec reviews count update: %w", err)
 	}
-	updateTook := time.Since(updateStart)
 
 	if err = tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to commit final tx: %w", err)
 	}
 
-	log.Printf("Inserted: %d/%d reviews from batch in: %v, updated revs count in: %v\n",
-		affectedRows, len(reviews), took, updateTook)
 	return numNewReviews, nil
 }
 
