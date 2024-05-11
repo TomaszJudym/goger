@@ -185,64 +185,58 @@ func (r *reviewer) download(title, gameID string) error {
 		return nil
 	}
 
+	// Insert
+
 	log.Printf("%s has: %d reviews in db, out of: %d fetched in: %v, %d missing",
 		title, inDB, totalReviews, time.Since(start), totalReviews-inDB)
 
 	// Keep downloading reviews until no new reviews are returned.
-	// Context will be cancelled after 1 day of no progress.
+	// Context will be cancelled after 10min of no progress.
 	pageSize := 150
 	reviewsChan := make(chan goger.Reviews, 1)
-	errs := make(chan error, 2)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+
+	var group errgroup.Group
 	// This routine fetched reviews for this game from web page.
-	go func() {
+	group.Go(func() error {
 		defer close(reviewsChan)
 		for {
 			select {
 			case <-ctx.Done():
-				errs <- fmt.Errorf("context cancelled after 1 day of no progress")
-				return
+				return fmt.Errorf("context cancelled after 10 min of no progress")
 			default:
 				page := int(math.Ceil(float64(inDB)/float64(pageSize))) + 1
+				fmt.Println("Fetching page ", page, " of ", title)
 				resp, err := r.fetchReviews(ctx, gameID, page, pageSize)
 				if err != nil {
-					errs <- fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
+					return fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
 						title, gameID, err)
-					return
 				}
 				if len(resp.Embedded.Reviews) == 0 {
-					break
+					return nil
 				}
 				reviewsChan <- resp.Embedded.Reviews
 				inDB += len(resp.Embedded.Reviews)
 			}
 		}
-	}()
+	})
 	// This routine saves them to db.
-	go func() {
+	group.Go(func() error {
 		for reviews := range reviewsChan {
-			created, err := r.repo.CreateReviews(reviews.ToRepo(time.Now()))
+			_, err = r.repo.CreateReviews(reviews.ToRepo(time.Now()))
 			if err != nil {
-				errs <- fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
+				// TODO: Kill also first routine when this error occurs
+				return fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
 					len(reviews), title, err)
-				return
-			}
-			if created == 0 {
-				errs <- nil
-				return
 			}
 		}
-		errs <- nil
-	}()
-
+		return nil
+	})
 	// Wait for both routines to finish and check for errors.
-	err1, err2 := <-errs, <-errs
-	for _, err := range []error{err1, err2} {
-		if err != nil {
-			return fmt.Errorf("failed to download reviews: %v", err)
-		}
+	if err = group.Wait(); err != nil {
+		return fmt.Errorf("failed to download reviews: %w", err)
 	}
 	log.Printf("%s done in: %v", title, time.Since(start))
 

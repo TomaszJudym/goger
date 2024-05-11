@@ -118,19 +118,6 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 		return 0, fmt.Errorf("failed to begin tx: %w", err)
 	}
 
-	// ########### DEBUG
-	ids := make([]string, 0, len(reviews))
-	for _, r := range reviews {
-		ids = append(ids, r.ID)
-	}
-	counted, err := r.db.Select("id").From("reviews").Where(goqu.C("id").In(ids)).Count()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("RES: ", counted, " GOT: ", len(ids))
-
-	// ###########
-
 	sql, _, err := tx.Insert("reviews").Rows(reviews).
 		OnConflict(goqu.DoNothing()).ToSQL()
 	if err != nil {

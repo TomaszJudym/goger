@@ -51,16 +51,16 @@ services:
     networks:
       - db-network
 
-  updater:
-    build:
-      context: .
-      dockerfile: Dockerfile-update
-    container_name: updater
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - db-network
+  # updater:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile-update
+  #   container_name: updater
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - db-network
 
   nginx:
     image: nginx:bookworm
