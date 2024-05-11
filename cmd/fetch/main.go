@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -66,6 +67,10 @@ func run(db Repo) error {
 	page := 1
 	total := 0
 	start := time.Now()
+	// TODO: Config 3
+	var group errgroup.Group
+	group.SetLimit(3)
+
 	for ; productsCount == pageSize; page++ {
 		// Fetch batch of games from GOG API
 		resp, err := fetchGames(page, pageSize)
@@ -85,9 +90,6 @@ func run(db Repo) error {
 		}
 		// TODO: Metrics
 		// For every game get reviews of this game
-		var group errgroup.Group
-		// TODO: Config 3
-		group.SetLimit(3)
 		for gameID, title := range resp.GameIDsToTitles() {
 			inGameID := gameID
 			inTitle := title
@@ -95,10 +97,11 @@ func run(db Repo) error {
 				return newReviewer(db).download(inTitle, inGameID)
 			})
 		}
-		if err = group.Wait(); err != nil {
-			return fmt.Errorf("failed to download reviews on games page: %d: %w",
-				page, err)
-		}
+	}
+
+	if err := group.Wait(); err != nil {
+		return fmt.Errorf("failed to download reviews on games page: %d: %w",
+			page, err)
 	}
 
 	end := time.Now()
@@ -167,6 +170,7 @@ func (r *reviewer) download(title, gameID string) error {
 	// Every response contains total review count.
 	// Get single review to figure out how many reviews
 	// there are for this game in total.
+	id := rand.Intn(1000)
 	start := time.Now()
 	resp, err := r.fetchReviews(context.Background(), gameID, 1, 1)
 	if err != nil {
@@ -208,7 +212,7 @@ func (r *reviewer) download(title, gameID string) error {
 				return fmt.Errorf("context cancelled after 10 min of no progress")
 			default:
 				page := int(math.Ceil(float64(inDB)/float64(pageSize))) + 1
-				fmt.Println("Fetching page ", page, " of ", title)
+				fmt.Printf("worker %d fetching page %d of %s\n", id, page, title)
 				resp, err := r.fetchReviews(ctx, gameID, page, pageSize)
 				if err != nil {
 					return fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
@@ -217,7 +221,9 @@ func (r *reviewer) download(title, gameID string) error {
 				if len(resp.Embedded.Reviews) == 0 {
 					return nil
 				}
+				fmt.Printf("worker %d sending to channel page %d of %s\n", id, page, title)
 				reviewsChan <- resp.Embedded.Reviews
+				fmt.Printf("worker %d sent to channel page %d of %s\n", id, page, title)
 				inDB += len(resp.Embedded.Reviews)
 			}
 		}
@@ -225,12 +231,14 @@ func (r *reviewer) download(title, gameID string) error {
 	// This routine saves them to db.
 	group.Go(func() error {
 		for reviews := range reviewsChan {
+			fmt.Printf("worker %d writing page of %s\n", id, title)
 			_, err = r.repo.CreateReviews(reviews.ToRepo(time.Now()))
 			if err != nil {
 				// TODO: Kill also first routine when this error occurs
 				return fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
 					len(reviews), title, err)
 			}
+			fmt.Printf("worker %d page of %s written\n", id, title)
 		}
 		return nil
 	})
@@ -238,7 +246,7 @@ func (r *reviewer) download(title, gameID string) error {
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("failed to download reviews: %w", err)
 	}
-	log.Printf("%s done in: %v", title, time.Since(start))
+	log.Printf("worker %s done in: %v", title, time.Since(start))
 
 	return nil
 }
