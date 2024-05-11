@@ -18,21 +18,9 @@ Inspected with network at /games
 
 Working nice, now select if save it in scylla, surreal or postgres.
 Postgres cool but need flattening
-Surreal edgy
 scylla insteresting and more mature than surreal
 
 11.11.2023
-
-1. https://reviews.gog.com/v1/products/1256837418/reviews?limit=2&page=13
-^ Iterate over it to figure out all games.
-
-2. Then take one after another, go to its page and take reviews.
-
-3. Save it in db, check what frequency will be periodically working
-to not get blocked by API.
-
-4. On 429 TooManyRequests wait for few min to let page calm down.
-Do it incrementally. 1min, 2, 4, 8 , 16 and so on.
 
 ##########################################
 
@@ -51,10 +39,14 @@ Found on cyberpunk phantom liberty store page.
   Add Search by title. Check if postgres have text search possible.
   With stuff like mispelling etc.
 
-
 - Redis: to cache responses
-
-- Just fix UI, amount of reviews is not displayed correctly.
+  -> Turn into postgresql UNLOGGED table
 
 - Make plan what to display finally.
-Better charts with some funny analytics
+1. Per game - list all languages
+2. 5 most popular words per language.
+3. Rating per language.
+4. Avg review length per language.
+5. 5 most popular colors in images.
+6. Developer, numbers of games, % of games
+7. % per developer
