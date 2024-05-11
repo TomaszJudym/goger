@@ -52,6 +52,8 @@ func main() {
 		}
 	}()
 
+	// TODO: Drop ticker and just make single run.
+	// Schedule it with cron
 	ticker := time.NewTicker(20 * time.Minute)
 	defer ticker.Stop()
 	for ; true; <-ticker.C {
@@ -132,9 +134,8 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 		return goger.CatalogResp{}, fmt.Errorf("failed to get games: %w", err)
 	}
 	defer response.Body.Close()
-	// Incremental rollback. GOG folks seemed not happy with big queries and now
-	// request for 1000 games fails with 502 error. Try to cut down this number in future
-	// until it works.
+	// Incremental rollback. GOG seemed not happy with big queries and now
+	// request for 1000 games fails with 502 error. Try to cut down this number in future.
 	retryCount := 0
 	for response.StatusCode == http.StatusBadGateway {
 		retryCount++
@@ -266,7 +267,6 @@ func (r *reviewer) reviewsCountOnPage(gameID string) (int, error) {
 }
 
 func (r *reviewer) reviewsCountInDB(gameID string) (int, error) {
-	// Check how many reviews are in db.
 	inDB, err := r.repo.GameReviewsCount(gameID)
 	if err != nil {
 		return -1, fmt.Errorf("failed to count reviews in db: %w", err)
@@ -289,16 +289,12 @@ func (r *reviewer) fetchReviews(ctx context.Context, gameID string, page,
 		err  error
 	)
 
-	attempts := 0
 	backoff := time.Second
-
 	for {
-		attempts++
-
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
-			return goger.ReviewsResp{}, fmt.Errorf("failed to create get request to: %s: %w",
-				url, err)
+			return goger.ReviewsResp{}, fmt.Errorf("failed to create get "+
+				"request to: %s, err: %w", url, err)
 		}
 
 		res, err = http.DefaultClient.Do(req)
@@ -316,7 +312,6 @@ func (r *reviewer) fetchReviews(ctx context.Context, gameID string, page,
 		time.Sleep(backoff)
 		backoff *= 2
 	}
-
 	defer res.Body.Close()
 
 	b, err := io.ReadAll(res.Body)
@@ -324,11 +319,9 @@ func (r *reviewer) fetchReviews(ctx context.Context, gameID string, page,
 		return goger.ReviewsResp{}, fmt.Errorf("failed to read page: %d resp body: %w",
 			page, err)
 	}
-
 	if err = json.Unmarshal(b, &data); err != nil {
 		return goger.ReviewsResp{}, fmt.Errorf("failed to unmarshal page: %d, body: %s, %w",
 			page, string(b), err)
 	}
-
 	return data, nil
 }
