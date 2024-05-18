@@ -1,132 +1,202 @@
-<style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        font-family: 'Space Mono', monospace;
-        background: #050505;
-        color: #a074d4;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #171717;
-        color: #a074d4;
-    }
-
-    th, td {
-        padding: 0.25rem;
-        border: 1px solid #333333;
-    }
-
-    thead {
-        background: #272727;
-    }
-
-    tbody tr:nth-child(even) {
-        background: #2f2f2f;
-    }
-
-    td:nth-child(2) {
-        min-width: 300px;
-    }
-
-    td:nth-child(3) {
-        width: 100px;
-    }
-
-    td:nth-child(4) {
-        width: 150px;
-    }
-
-    td:nth-child(5) {
-        width: 100px;
-    }
-
-    td:nth-child(6) {
-        width: 100px;
-    }
-
-    td:nth-child(7) {
-        width: 100px;
-    }
-
-    td:nth-child(8) {
-        width: 100px;
-    }
-
-    td:nth-child(9) {
-        width: 100px;
-    }
-
-    td:nth-child(10) {
-        width: 100px;
-    }
-
-    a {
-        color: #a074d4;
-    }
-
-    .container {
-        max-width: 1200px;
-        margin: 0 auto;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-
-    .pagination {
-        display: flex;
-        justify-content: center;
-        flex-wrap: wrap;
-    }
-</style>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Games</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goger</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background-color: #2e2e2e;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            text-align: center;
+        }
+        h2 {
+            margin: 20px 0;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #444;
+        }
+        tr:nth-child(even) {
+            background-color: #3a3a3a;
+        }
+        tr:hover {
+            background-color: #5a5a5a;
+        }
+        .change-positive {
+            color: #ff69b4;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .footer {
+            margin: 40px 0;
+            text-align: center;
+            color: #aaa;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        function renderChart(chartId, chartData) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({length: 48}, (_, i) => {
+                        const now = new Date();
+                        now.setHours(now.getHours() - i);
+                        return `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+                    }).reverse(),
+                    datasets: [{
+                        data: chartData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 0,
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            displayColors: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false,
+                            ticks: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            display: false,
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    </script>
 </head>
 <body>
     <div class="container">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Reviews Count</th>
-                    <th>Common Langs</th>
-                    <th>Lang 1</th>
-                    <th>Lang 2</th>
-                    <th>Lang 3</th>
-                    <th>Lang 4</th>
-                    <th>Lang 5</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Games}}
-                <tr>
-                    <td><a href="/games/{{.ID}}/reviews">{{.ID}}</a></td>
-                    <td>{{.Title}}</td>
-                    <td>{{.ReviewsCount}}</td>
-                    <td>{{.CommonLangs}}</td>
-                    <td>{{.Lang1}}</td>
-                    <td>{{.Lang2}}</td>
-                    <td>{{.Lang3}}</td>
-                    <td>{{.Lang4}}</td>
-                    <td>{{.Lang5}}</td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-        <div class="pagination">
-            {{range $i := seq .TotalPages}}
-                <a href="?page={{$i}}">{{$i}}</a>
-            {{end}}
+        <h1>Goger</h1>
+        <div class="section">
+            <h2>Trending</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Rating</th>
+                        <th>Last 48 Hours</th>
+                        <th>Total reviews</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Trending}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td class="change-positive">{{.Change}}</td>
+                        <td><canvas id="{{.Name}}" width="200px" height="80px"></canvas></td>
+                        <script>
+                            renderChart('{{.Name}}', "{{.Data}}");
+                        </script>
+                        <td>{{.CurrentPlayers}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div class="section">
+            <h2>Top Games By Current Players</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Current Players</th>
+                        <th>Last 30 Days</th>
+                        <th>Peak Players</th>
+                        <th>Hours Played</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopGames}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td>{{.CurrentPlayers}}</td>
+                        <td>
+                            <div class="chart-container">
+                                <canvas id="{{.Name}}" width="200" height="200"></canvas>
+                            </div>
+                        </td>
+                        <td>{{.PeakPlayers}}</td>
+                        <td>{{.HoursPlayed}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div class="section">
+            <h2>Top Records</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Peak Players</th>
+                        <th>Time</th>
+                        <th>Last 48 Hours</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopRecords}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td>{{.PeakPlayers}}</td>
+                        <td>{{.Time}}</td>
+                        <td>
+                            <div class="chart-container">
+                                <canvas id="{{.Name}}" width="200" height="200"></canvas>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div class="footer">
+            An ongoing analysis of Steam's concurrent players.
         </div>
     </div>
 </body>
 </html>
-
 
