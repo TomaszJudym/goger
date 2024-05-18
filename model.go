@@ -359,7 +359,7 @@ type NavigationLinks struct {
 type Review struct {
 	ID                 string   `json:"id"`
 	ProductID          string   `json:"productId"`
-	Rating             Rating   `json:"nrating"`
+	Rating             Rating   `json:"rating"`
 	Content            Content  `json:"content"`
 	Reviewer           Reviewer `json:"reviewer"`
 	Labels             []string `json:"labels"`

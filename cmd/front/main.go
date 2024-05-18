@@ -88,19 +88,15 @@ type ChartData struct {
 	Values []int    `json:"values"`
 }
 
-type PageData struct {
-	Trending       []Game
-	TopGames       []Game
-	TopRecords     []Game
-	Graph          template.HTML
-	TopGamesData   template.JS
-	TopRecordsData template.JS
+type IndexData struct {
+	Trending   []Game
+	TopGames   []Game
+	TopRecords []Game
 }
 
 // adapted from
 // https://github.com/go-echarts/go-echarts/blob/master/templates/base.go
 // https://github.com/go-echarts/go-echarts/blob/master/templates/header.go
-
 var baseTpl = `
 <script type="text/javascript">
     "use strict";
@@ -175,7 +171,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	if err != nil || page < 1 {
 		page = 1
 	}
-
+	// TODO: Parse once and save
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		log.Printf("Failed to parse template: %v", err)
@@ -191,7 +187,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		{"5", "Wildermyth", "+242.1%", 1347, 0, 0, randomDate(), randomIntArray(48)},
 	}
 
-	data := PageData{
+	data := IndexData{
 		Trending: trendingGames,
 		TopGames: []Game{
 			{"6", "Counter-Strike 2", "", 809646, 1614925, 683750246, randomDate(), randomIntArray(48)},
