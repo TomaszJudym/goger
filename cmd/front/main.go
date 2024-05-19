@@ -109,7 +109,22 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to get trending games: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
-	fmt.Println("GOT TRENDING: ", trending)
+
+	layout := "2006-01-02 15:04:05-07"
+	reviewsByHours := make([]int, 48)
+	for _, game := range trending {
+		for _, d := range game.ReviewDates {
+			t, err := time.Parse(layout, d)
+			if err != nil {
+				log.Printf("Error parsing date: %s: %v", d, err)
+				break
+			}
+			hoursAgo := int(time.Since(t).Hours())
+			if hoursAgo < 48 {
+				reviewsByHours[47-hoursAgo]++
+			}
+		}
+	}
 
 	trendingGames := []Game{
 		{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
