@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 	"github.com/tomaszjudym/goger"
@@ -84,52 +81,6 @@ type IndexData struct {
 	TopRecords []Game
 }
 
-// adapted from
-// https://github.com/go-echarts/go-echarts/blob/master/templates/base.go
-// https://github.com/go-echarts/go-echarts/blob/master/templates/header.go
-var baseTpl = `
-<script type="text/javascript">
-    "use strict";
-    let goecharts_{{ .ChartID | safeJS }} = echarts.init(document.getElementById('{{ .ChartID | safeJS }}'));
-    let option_{{ .ChartID | safeJS }} = {{ .JSON }};
-    goecharts_{{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
-</script>
-`
-
-type snippetRenderer struct {
-	c      any
-	before []func()
-}
-
-func newSnippetRenderer(c interface{}, before ...func()) render.Renderer {
-	return &snippetRenderer{c: c, before: before}
-}
-
-func (r *snippetRenderer) Render(w io.Writer) error {
-	const tplName = "chart"
-
-	tpl := template.
-		Must(template.New(tplName).
-			Funcs(template.FuncMap{
-				"safeJS": func(s interface{}) template.JS {
-					return template.JS(fmt.Sprint(s))
-				},
-			}).
-			Parse(baseTpl),
-		)
-
-	err := tpl.ExecuteTemplate(w, tplName, r.c)
-	return err
-}
-
-func generateBarItems() []opts.BarData {
-	items := make([]opts.BarData, 0)
-	for i := 0; i < 10; i++ {
-		items = append(items, opts.BarData{Value: rand.Intn(300)})
-	}
-	return items
-}
-
 func randomIntArray(size int) []int {
 	result := make([]int, size)
 	for i := range result {
@@ -153,7 +104,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trending, err := db.MostReviewedGamesWithRevTs(128, 5)
+	trending, err := db.MostReviewedGamesWithRevTs(48, 5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
