@@ -126,19 +126,19 @@
                     {{range .Trending}}
                     <tr>
                         <td>{{.Name}}</td>
-                        <td class="change-positive">{{.Change}}</td>
+                        <td class="change-positive">{{.Rating}}</td>
                         <td><canvas id="{{.Name}}" width="200px" height="80px"></canvas></td>
                         <script>
                             renderChart('{{.Name}}', "{{.Data}}");
                         </script>
-                        <td>{{.CurrentPlayers}}</td>
+                        <td>{{.TotalReviews}}</td>
                     </tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
         <div class="section">
-            <h2>Top Games By Current Players</h2>
+            <h2>Games with most reviews</h2>
             <table class="table">
                 <thead>
                     <tr>
@@ -153,14 +153,14 @@
                     {{range .TopGames}}
                     <tr>
                         <td>{{.Name}}</td>
-                        <td>{{.CurrentPlayers}}</td>
+                        <td>{{.TotalReviews}}</td>
                         <td>
                             <div class="chart-container">
                                 <canvas id="{{.Name}}" width="200" height="200"></canvas>
                             </div>
                         </td>
-                        <td>{{.PeakPlayers}}</td>
-                        <td>{{.HoursPlayed}}</td>
+                        <td>{{.TotalReviews}}</td>
+                        <td>{{.Rating}}</td>
                     </tr>
                     {{end}}
                 </tbody>
@@ -181,8 +181,8 @@
                     {{range .TopRecords}}
                     <tr>
                         <td>{{.Name}}</td>
-                        <td>{{.PeakPlayers}}</td>
-                        <td>{{.Time}}</td>
+                        <td>{{.TotalReviews}}</td>
+                        <td>{{.Rating}}</td>
                         <td>
                             <div class="chart-container">
                                 <canvas id="{{.Name}}" width="200" height="200"></canvas>

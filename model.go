@@ -536,6 +536,14 @@ type UIReview struct {
 	InternalUpdateDate string
 }
 
+type TrendingGame struct {
+	ID            int            `db:"id"`
+	Title         string         `db:"title"`
+	ReviewsRating int            `db:"reviews_rating"`
+	TotalReviews  int            `db:"total_reviews"`
+	ReviewDates   pq.StringArray `db:"review_dates"`
+}
+
 type UIGame struct {
 	ID           int    `db:"id"`
 	Title        string `db:"title"`

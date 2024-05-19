@@ -11,11 +11,12 @@ import (
 )
 
 type GamesRepo struct {
-	db                 *goqu.Database
-	countGames         *sqlx.Stmt
-	countRevsForGame   *sqlx.Stmt
-	gamesWithRevsCount *sqlx.Stmt
-	reviewsByGame      *sqlx.Stmt
+	db                      *goqu.Database
+	countGames              *sqlx.Stmt
+	countRevsForGame        *sqlx.Stmt
+	gamesWithRevsCount      *sqlx.Stmt
+	reviewsByGame           *sqlx.Stmt
+	trendingGamesNReviewsTs *sqlx.Stmt
 }
 
 func NewRepo() (*GamesRepo, error) {
@@ -64,18 +65,48 @@ func NewRepo() (*GamesRepo, error) {
 		WHERE product_id = $1
 		ORDER BY review_date DESC
 		OFFSET $2
-		LIMIT $3
+		LIMIT $3`)
+	if err != nil {
+		return nil, err
+	}
+	trendingGamesNReviewsTs, err := db.Preparex(`
+	WITH reviews_last_hours AS (
+		SELECT 
+			product_id,
+			review_date
+		FROM reviews
+		WHERE review_date >= NOW() - INTERVAL '1 HOUR' * $1
+	),
+	total_reviews AS (
+		SELECT
+			product_id,
+			COUNT(*) AS total_reviews,
+			ARRAY_AGG(review_date ORDER BY review_date DESC) AS review_dates
+		FROM reviews_last_hours
+		GROUP BY product_id
+	)
+	SELECT
+		g.id,
+		g.title,
+		g.reviews_rating,
+		tr.total_reviews,
+		tr.review_dates
+	FROM total_reviews tr
+	JOIN games g ON g.id = tr.product_id
+	ORDER BY tr.total_reviews DESC
+	LIMIT $2;	
 	`)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GamesRepo{
-		db:                 gq,
-		countRevsForGame:   countR,
-		countGames:         countG,
-		gamesWithRevsCount: gamesWithReviewCount,
-		reviewsByGame:      reviewsByGame,
+		db:                      gq,
+		countRevsForGame:        countR,
+		countGames:              countG,
+		gamesWithRevsCount:      gamesWithReviewCount,
+		reviewsByGame:           reviewsByGame,
+		trendingGamesNReviewsTs: trendingGamesNReviewsTs,
 	}, nil
 }
 
@@ -229,6 +260,32 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 	for rows.Next() {
 		var game UIGame
 		err := rows.Scan(&game.ID, &game.Title, &game.ReviewsCount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan game: %w", err)
+		}
+		games = append(games, game)
+	}
+	return games, nil
+}
+
+func (r *GamesRepo) MostReviewedGamesWithRevTs(hours, limit int) ([]TrendingGame, error) {
+	rows, err := r.trendingGamesNReviewsTs.Query(hours, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query with hours %d and limit: %d: %w",
+			hours, limit, err)
+	}
+	defer rows.Close()
+
+	games := make([]TrendingGame, 0, limit)
+	for rows.Next() {
+		var game TrendingGame
+		err := rows.Scan(
+			&game.ID,
+			&game.Title,
+			&game.ReviewsRating,
+			&game.TotalReviews,
+			&game.ReviewDates,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan game: %w", err)
 		}

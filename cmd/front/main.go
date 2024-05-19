@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/go-redis/redis/v8"
@@ -27,6 +25,7 @@ type Repo interface {
 	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
 	GameReviewsCount(gameID string) (int, error)
+	MostReviewedGamesWithRevTs(hours, limit int) ([]goger.TrendingGame, error)
 }
 
 type PageGames struct {
@@ -72,20 +71,11 @@ func main() {
 }
 
 type Game struct {
-	ID             string
-	Name           string
-	Change         string
-	CurrentPlayers int
-	PeakPlayers    int
-	HoursPlayed    int
-	Time           string
-	Data           []int
-}
-
-type ChartData struct {
-	ID     string   `json:"id"`
-	Labels []string `json:"labels"`
-	Values []int    `json:"values"`
+	ID           string
+	Name         string
+	Rating       string
+	TotalReviews int
+	Data         []int
 }
 
 type IndexData struct {
@@ -132,17 +122,6 @@ func (r *snippetRenderer) Render(w io.Writer) error {
 	return err
 }
 
-func renderToHTML(r render.Renderer) template.HTML {
-	var buf bytes.Buffer
-	err := r.Render(&buf)
-	if err != nil {
-		log.Printf("Failed to render chart: %s", err)
-		return ""
-	}
-
-	return template.HTML(buf.String())
-}
-
 func generateBarItems() []opts.BarData {
 	items := make([]opts.BarData, 0)
 	for i := 0; i < 10; i++ {
@@ -159,11 +138,6 @@ func randomIntArray(size int) []int {
 	return result
 }
 
-func randomDate() string {
-	min := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-	max := time.Now()
-	return min.Add(time.Duration(rand.Int63n(int64(max.Sub(min))))).Truncate(time.Hour).String()
-}
 func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	// Get page parameter from the query string
@@ -179,37 +153,36 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trending, err := db.MostReviewedGamesWithRevTs(128, 5)
+	if err != nil {
+		log.Printf("Failed to get trending games: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+	fmt.Println("GOT TRENDING: ", trending)
+
 	trendingGames := []Game{
-		{"1", "480% Orange Juice", "+1442.6%", 1493, 0, 0, randomDate(), randomIntArray(48)},
-		{"2", "ENDLESS™ Legend", "+946.9%", 2306, 0, 0, randomDate(), randomIntArray(48)},
-		{"3", "Wizard with a Gun", "+425.5%", 1140, 0, 0, randomDate(), randomIntArray(48)},
-		{"4", "Minecraft Dungeons", "+277.0%", 1748, 0, 0, randomDate(), randomIntArray(48)},
-		{"5", "Wildermyth", "+242.1%", 1347, 0, 0, randomDate(), randomIntArray(48)},
+		{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
+		{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
+		{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
+		{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
+		{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
 	}
 
 	data := IndexData{
 		Trending: trendingGames,
 		TopGames: []Game{
-			{"6", "Counter-Strike 2", "", 809646, 1614925, 683750246, randomDate(), randomIntArray(48)},
-			{"7", "Dota 2", "", 396802, 921133, 362647668, randomDate(), randomIntArray(48)},
-			{"8", "PUBG: BATTLEGROUNDS", "", 111874, 693485, 200697994, randomDate(), randomIntArray(48)},
-			{"9", "Rust", "", 90420, 153662, 59446243, randomDate(), randomIntArray(48)},
-			{"48", "Apex Legends", "", 89447, 430800, 126331197, randomDate(), randomIntArray(48)},
-			{"11", "Call of Duty®", "", 84016, 134190, 56815113, randomDate(), randomIntArray(48)},
-			{"12", "Fallout 4", "", 80504, 186746, 67500716, randomDate(), randomIntArray(48)},
-			{"13", "Destiny 2", "", 79624, 125545, 49370136, randomDate(), randomIntArray(48)},
-			{"14", "Grand Theft Auto V", "", 73194, 158791, 66264374, randomDate(), randomIntArray(48)},
-			{"15", "Team Fortress 2", "", 72470, 84858, 47007870, randomDate(), randomIntArray(48)},
+			{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
+			{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
+			{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
+			{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
+			{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
 		},
 		TopRecords: []Game{
-			{"16", "PUBG: BATTLEGROUNDS", "3,236,027", 0, 0, 0, "Jan 2018", randomIntArray(48)},
-			{"17", "Palworld", "2,481,535", 0, 0, 0, "Jan 2024", randomIntArray(48)},
-			{"18", "Counter-Strike 2", "1,802,853", 0, 0, 0, "May 2023", randomIntArray(48)},
-			{"19", "Lost Ark", "1,324,761", 0, 0, 0, "Feb 2022", randomIntArray(48)},
-			{"20", "Dota 2", "1,291,328", 0, 0, 0, "Mar 2016", randomIntArray(48)},
-			{"21", "ELDEN RING", "952,523", 0, 0, 0, "Mar 2022", randomIntArray(48)},
-			{"22", "New World", "913,027", 0, 0, 0, "Oct 2021", randomIntArray(48)},
-			{"23", "Baldur's Gate 3", "875,343", 0, 0, 0, "Aug 2023", randomIntArray(48)},
+			{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
+			{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
+			{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
+			{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
+			{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
 		},
 	}
 
@@ -220,21 +193,6 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Served games in %v, from IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
-}
-
-// TODO: make this bar work somehow
-func randomBarHTML() template.HTML {
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{Width: "100px", Height: "200px"}),
-		charts.WithLegendOpts(opts.Legend{Show: false}),
-		charts.WithXAxisOpts(opts.XAxis{Show: false}),
-		charts.WithYAxisOpts(opts.YAxis{Show: false}),
-	)
-
-	bar.AddSeries("", generateBarItems()).
-		AddSeries("", generateBarItems())
-	return renderToHTML(bar)
 }
 
 func handlerGames(w http.ResponseWriter, r *http.Request) {
