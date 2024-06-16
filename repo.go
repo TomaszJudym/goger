@@ -3,7 +3,7 @@ package goger
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -11,6 +11,7 @@ import (
 )
 
 type GamesRepo struct {
+	logger                  *slog.Logger
 	db                      *goqu.Database
 	countGames              *sqlx.Stmt
 	countRevsForGame        *sqlx.Stmt
@@ -19,7 +20,7 @@ type GamesRepo struct {
 	trendingGamesNReviewsTs *sqlx.Stmt
 }
 
-func NewRepo() (*GamesRepo, error) {
+func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	const (
 		dbHost     = "pg"
 		dbPort     = "5432"
@@ -101,6 +102,7 @@ func NewRepo() (*GamesRepo, error) {
 	}
 
 	return &GamesRepo{
+		logger:                  l,
 		db:                      gq,
 		countRevsForGame:        countR,
 		countGames:              countG,
@@ -110,9 +112,39 @@ func NewRepo() (*GamesRepo, error) {
 	}, nil
 }
 
+// CreateGames inserts multiple games into the "games" table.
+//
+// It takes a slice of ProductRepo as a parameter, which represents the games to be inserted.
+// The function returns the number of rows affected by the insertion and an error if any.
 func (r *GamesRepo) CreateGames(games []ProductRepo) (int, error) {
 	sql, _, err := r.db.Insert("games").Rows(games).
-		OnConflict(goqu.DoNothing()).ToSQL()
+		OnConflict(goqu.DoUpdate("id",
+			goqu.Record{
+				"slug":                             goqu.L("EXCLUDED.slug"),
+				"features":                         goqu.L("EXCLUDED.features"),
+				"screenshots":                      goqu.L("EXCLUDED.screenshots"),
+				"user_preferred_language_code":     goqu.L("EXCLUDED.user_preferred_language_code"),
+				"user_preferred_language_in_audio": goqu.L("EXCLUDED.user_preferred_language_in_audio"),
+				"user_preferred_language_in_text":  goqu.L("EXCLUDED.user_preferred_language_in_text"),
+				"release_date":                     goqu.L("EXCLUDED.release_date"),
+				"store_release_date":               goqu.L("EXCLUDED.store_release_date"),
+				"product_type":                     goqu.L("EXCLUDED.product_type"),
+				"title":                            goqu.L("EXCLUDED.title"),
+				"cover_horizontal":                 goqu.L("EXCLUDED.cover_horizontal"),
+				"cover_vertical":                   goqu.L("EXCLUDED.cover_vertical"),
+				"developers":                       goqu.L("EXCLUDED.developers"),
+				"publishers":                       goqu.L("EXCLUDED.publishers"),
+				"operating_systems":                goqu.L("EXCLUDED.operating_systems"),
+				"price_final":                      goqu.L("EXCLUDED.price_final"),
+				"price_base":                       goqu.L("EXCLUDED.price_base"),
+				"price_currency":                   goqu.L("EXCLUDED.price_currency"),
+				"price_discount":                   goqu.L("EXCLUDED.price_discount"),
+				"product_state":                    goqu.L("EXCLUDED.product_state"),
+				"genres":                           goqu.L("EXCLUDED.genres"),
+				"tags":                             goqu.L("EXCLUDED.tags"),
+				"reviews_rating":                   goqu.L("EXCLUDED.reviews_rating"),
+				"updated_at":                       goqu.L("EXCLUDED.updated_at"),
+			})).ToSQL()
 	if err != nil {
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -122,19 +154,19 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute query: %w", err)
 	}
+	// CreateGames inserts multiple games into the "games" table.
+	//
+	// It takes a slice of ProductRepo as a parameter, which represents the games to be inserted.
+	// The function returns the number of rows affected by the insertion and an error if any.
 	affected, err := res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
 	}
 	took := time.Since(start)
 
-	affectedRows, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	if affectedRows != 0 {
-		log.Printf("Inserted: %d/%d games from batch in: %v\n",
-			affectedRows, len(games), took)
+	if affected != 0 {
+		r.logger.Debug("Inserted games batch",
+			"affected", affected, "total", len(games), "took", took)
 	}
 	return int(affected), nil
 }

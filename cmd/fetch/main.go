@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -24,12 +25,18 @@ type Repo interface {
 	CreateRun(r goger.RunRepo) error
 }
 
-type reviewer struct {
-	repo Repo
+type fetcher struct {
+	repo   Repo
+	logger *slog.Logger
 }
 
-func newReviewer(r Repo) *reviewer {
-	return &reviewer{repo: r}
+type reviewer struct {
+	repo   Repo
+	logger *slog.Logger
+}
+
+func newReviewer(r Repo, l *slog.Logger) *reviewer {
+	return &reviewer{repo: r, logger: l}
 }
 
 func main() {
@@ -37,8 +44,9 @@ func main() {
 		db  *goger.GamesRepo
 		err error
 	)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	for {
-		db, err = goger.NewRepo()
+		db, err = goger.NewRepo(logger)
 		if err == nil {
 			break
 		}
@@ -52,18 +60,20 @@ func main() {
 		}
 	}()
 
+	f := fetcher{repo: db, logger: logger}
 	// TODO: Drop ticker and just make single run.
 	// Schedule it with cron
 	ticker := time.NewTicker(20 * time.Minute)
 	defer ticker.Stop()
 	for ; true; <-ticker.C {
-		if err = run(db); err != nil {
-			log.Printf("[ERR]: Failed to fetch all games: %v", err)
+		logger.Info("Starting fetch", "time", time.Now())
+		if err = f.run(); err != nil {
+			f.logger.Error("Failed to fetch all games", "error", err)
 		}
 	}
 }
 
-func run(db Repo) error {
+func (f *fetcher) run() error {
 	// TODO: Make configurable
 	const pageSize = 110
 	fetchedInReq := 110
@@ -89,7 +99,7 @@ func run(db Repo) error {
 		if err != nil {
 			return fmt.Errorf("failed to convert response products to repo: %w", err)
 		}
-		if _, err = db.CreateGames(pr); err != nil {
+		if _, err = f.repo.CreateGames(pr); err != nil {
 			return fmt.Errorf("failed to insert batch of: %d games: %w", len(pr), err)
 		}
 		// TODO: Metrics
@@ -98,7 +108,7 @@ func run(db Repo) error {
 			inGameID := gameID
 			inTitle := title
 			group.Go(func() error {
-				return newReviewer(db).download(inTitle, inGameID)
+				return newReviewer(f.repo, f.logger).download(inTitle, inGameID)
 			})
 		}
 	}
@@ -109,17 +119,16 @@ func run(db Repo) error {
 	}
 	// Save to db when last run finished.
 	end := time.Now()
-	if err := db.CreateRun(goger.RunRepo{
+	if err := f.repo.CreateRun(goger.RunRepo{
 		StartTs: start,
 		EndTs:   end,
 		Games:   total,
 		Pages:   page,
 	}); err != nil {
-		log.Printf("Failed to create run: %v", err)
+		f.logger.Error("Failed to create run", "error", err)
 	}
-	log.Printf("Total pages: %d\n"+
-		"Total games: %d\n"+
-		"Took: %v\n", page, total, time.Since(start))
+	f.logger.Info("Run finished", "Took", time.Since(start),
+		"pages", page, "games", total)
 	return nil
 }
 
@@ -196,11 +205,11 @@ func (r *reviewer) download(title, gameID string) error {
 		return nil
 	}
 
-	l := log.New(os.Stdout, fmt.Sprintf("worker: %d: ", rand.Intn(1000)), log.LstdFlags)
-	start := time.Now()
-	l.Printf("%s has: %d reviews in db, out of: %d fetched in: %v, %d missing",
-		title, inDB, onPage, time.Since(start), onPage-inDB)
+	l := r.logger.With("gameID", gameID, "title", title)
+	l.Debug(fmt.Sprintf("Downloading %s", title), "inDB", inDB, "onPage",
+		onPage, "missing", onPage-inDB)
 
+	start := time.Now()
 	// Keep downloading reviews until no new reviews are returned.
 	// Context will be cancelled after 10min of no progress.
 	const pageSize = 150
@@ -215,11 +224,10 @@ func (r *reviewer) download(title, gameID string) error {
 		for {
 			select {
 			case <-ctx.Done():
-				return fmt.Errorf("context cancelled after 10 min of no progress")
+				return errors.New("context cancelled after 10 min of no progress")
 			default:
 				page := int(math.Ceil(float64(inDB)/float64(pageSize))) + 1
-				// TODO: Turn into debug log
-				l.Printf("fetching page %d of %s\n", page, title)
+				l.Debug("fetching page", "page", page)
 				resp, err := r.fetchReviews(ctx, gameID, page, pageSize)
 				if err != nil {
 					return fmt.Errorf("failed to fetch reviews for: %s id: %s: %w",
@@ -229,8 +237,7 @@ func (r *reviewer) download(title, gameID string) error {
 					return nil
 				}
 				inDB += len(resp.Embedded.Reviews)
-				// TODO: Turn into debug log
-				l.Printf("sending to channel page %d of %s got %d/%d\n", page, title, inDB, onPage)
+				l.Debug("sending to channel page", "page", page, "got", inDB, "of", onPage)
 				reviewsChan <- resp.Embedded.Reviews
 			}
 		}
@@ -244,7 +251,7 @@ func (r *reviewer) download(title, gameID string) error {
 				return fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
 					len(reviews), title, err)
 			}
-			l.Printf("page of %s written\n", title)
+			l.Debug("page of written")
 		}
 		return nil
 	})
@@ -252,7 +259,7 @@ func (r *reviewer) download(title, gameID string) error {
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("failed to download reviews: %w", err)
 	}
-	l.Printf("%s done in: %v", title, time.Since(start))
+	l.Info("downloaded", "revsCount", onPage, "took", time.Since(start))
 
 	return nil
 }

@@ -4,8 +4,8 @@ tasks:
   run:
     cmds:
       - rm -f output.log 2> /dev/null
-      - docker-compose down
-      - docker-compose up --build 2>&1 | tee output.log
+      - docker compose down
+      - docker compose up --build 2>&1 | tee output.log
   backup:
     cmds:
       - rm -rf backups
@@ -16,4 +16,4 @@ tasks:
       - rm -f backups/games backups/reviews
   kill:
     cmds:
-      - docker-compose down --remove-orphans --volumes
+      - docker compose down --remove-orphans --volumes

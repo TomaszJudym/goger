@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -44,7 +46,7 @@ var (
 
 func init() {
 	var err error
-	db, err = goger.NewRepo()
+	db, err = goger.NewRepo(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	if err != nil {
 		log.Fatalf("Failed to connect to db: %v", err)
 	}

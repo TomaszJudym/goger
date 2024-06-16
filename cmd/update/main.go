@@ -2,13 +2,12 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/tomaszjudym/goger"
 )
 
 func main() {
@@ -33,51 +32,69 @@ type reviewInfo struct {
 }
 
 func listenForDBChanges(connStr string) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	listener := pq.NewListener(connStr, 10*time.Second, time.Hour*24*365, func(event pq.ListenerEventType, err error) {
 		if err != nil {
-			log.Printf("Postgres listener state change: %d, error: %v", event, err)
+			logger.Error("Postgres listener state change", "event", event, "error", err)
 		}
 	})
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatalf("Failed to connect to postgres: %v", err)
+		logger.Error("Failed to connect to postgres", "error", err)
 	}
 
 	err = listener.Listen("games_changes")
 	if err != nil {
-		log.Fatalf("Error listening on channel 'games_changes': %v", err)
+		logger.Error("Error listening on channel 'games_changes'", "error", err)
 	}
 
 	err = listener.Listen("reviews_changes")
 	if err != nil {
-		log.Fatalf("Error listening on channel 'reviews_changes': %v", err)
+		logger.Error("Error listening on channel 'reviews_changes'", "error", err)
+	}
+	// Fetch first time to get the initial state and not log
+	// that state changed from 0 to something.
+	var inDBReviews, inDBGames int
+	err = db.QueryRow("SELECT count(id) FROM reviews").Scan(&inDBReviews)
+	if err != nil {
+		logger.Error("Failed to count reviews", "error", err)
+	}
+	err = db.QueryRow("SELECT count(id) FROM games").Scan(&inDBGames)
+	if err != nil {
+		logger.Error("Failed to count games", "error", err)
 	}
 
+	reviewsCount10sAgo, gamesCount10sAgo := inDBReviews, inDBGames
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
 	for {
-		n := <-listener.Notify
-		switch n.Channel {
-		case "games_changes":
-			var game goger.ProductRepo
-			if err = json.Unmarshal([]byte(n.Extra), &game); err != nil {
-				log.Printf("Failed to unmarshal games: %s, error: %v", n.Extra, err)
+		select {
+		case <-ticker.C:
+
+			err := db.QueryRow("SELECT count(id) FROM reviews").Scan(&inDBReviews)
+			if err != nil {
+				logger.Error("Failed to count reviews", "error", err)
 			}
-			fmt.Printf("UPDATE OF GAME: %s\n", game.Title)
-		case "reviews_changes":
-			var info reviewInfo
-			if err = json.Unmarshal([]byte(n.Extra), &info); err != nil {
-				log.Printf("Failed to unmarshal reviews: %s, error: %v", n.Extra, err)
+			err = db.QueryRow("SELECT count(id) FROM games").Scan(&inDBGames)
+			if err != nil {
+				logger.Error("Failed to count games", "error", err)
 			}
 
-			gameTitle, err := gameTitle(db, info.ProductID)
-			if err != nil {
-				log.Printf("Failed to get game title for review with product_id: %d: %v",
-					info.ProductID, err)
+			if inDBReviews != reviewsCount10sAgo || inDBGames != gamesCount10sAgo {
+				logger.Info("counters changed",
+					"reviews_count", inDBReviews, "games_count", inDBGames)
+				reviewsCount10sAgo, gamesCount10sAgo = inDBReviews, inDBGames
 			}
-			fmt.Printf("UPDATE OF REVIEW game: %s, len: %d, title: %s\n",
-				gameTitle, info.DescriptionLen, info.Title)
-		default:
-			log.Printf("Unknown channel: %s", n.Channel)
+		case n := <-listener.Notify:
+			switch n.Channel {
+			case "games_changes":
+			case "reviews_changes":
+			default:
+				logger.Error("Unknown channel", "channel", n.Channel)
+			}
 		}
 	}
 }
