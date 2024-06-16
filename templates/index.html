@@ -62,6 +62,14 @@
             text-align: center;
             color: #aaa;
         }
+        .table tbody tr {
+            height: 50px;
+            max-height: 50px;
+        }
+        .table tbody tr:nth-child(3) {
+            height: 100px;
+            max-height: 100px;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -111,7 +119,7 @@
 <body>
     <div class="container">
         <h1>Goger</h1>
-        <div class="section">
+        <div>
             <h2>Trending</h2>
             <table class="table">
                 <thead>
@@ -124,10 +132,12 @@
                 </thead>
                 <tbody>
                     {{range .Trending}}
-                    <tr>
+                    <tr style="height: 100px; max-height: 100px;">
                         <td>{{.Name}}</td>
                         <td class="change-positive">{{.Rating}}</td>
-                        <td><canvas id="{{.Name}}" width="200px" height="80px"></canvas></td>
+                        <td>
+                            <canvas id="{{.Name}}" width="200px" height="100px"></canvas>
+                        </td>
                         <script>
                             renderChart('{{.Name}}', "{{.Data}}");
                         </script>
@@ -137,7 +147,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="section">
+        <div>
             <h2>Games with most reviews</h2>
             <table class="table">
                 <thead>
@@ -154,11 +164,7 @@
                     <tr>
                         <td>{{.Name}}</td>
                         <td>{{.TotalReviews}}</td>
-                        <td>
-                            <div class="chart-container">
-                                <canvas id="{{.Name}}" width="200" height="200"></canvas>
-                            </div>
-                        </td>
+                        <td>Chuj</td>
                         <td>{{.TotalReviews}}</td>
                         <td>{{.Rating}}</td>
                     </tr>
@@ -166,7 +172,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="section">
+        <div>
             <h2>Top Records</h2>
             <table class="table">
                 <thead>
@@ -183,18 +189,14 @@
                         <td>{{.Name}}</td>
                         <td>{{.TotalReviews}}</td>
                         <td>{{.Rating}}</td>
-                        <td>
-                            <div class="chart-container">
-                                <canvas id="{{.Name}}" width="200" height="200"></canvas>
-                            </div>
-                        </td>
+                        <td>Chuj</td>
                     </tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
         <div class="footer">
-            An ongoing analysis of Steam's concurrent players.
+            An ongoing analysis of Gog's games and reviews.
         </div>
     </div>
 </body>
