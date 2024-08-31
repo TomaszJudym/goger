@@ -91,6 +91,15 @@ func randomIntArray(size int) []int {
 	return result
 }
 
+type Stats struct {
+	TotalGames        int
+	AvgRatings        float64
+	MostPopularGame   string
+	MostPositiveGame  string
+	MostNegativeGame  string
+	AvgReviewsPerGame float64
+}
+
 func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	// Get page parameter from the query string

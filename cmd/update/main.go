@@ -73,7 +73,6 @@ func listenForDBChanges(connStr string) {
 	for {
 		select {
 		case <-ticker.C:
-
 			err := db.QueryRow("SELECT count(id) FROM reviews").Scan(&inDBReviews)
 			if err != nil {
 				logger.Error("Failed to count reviews", "error", err)

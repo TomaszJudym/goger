@@ -18,6 +18,16 @@ type GamesRepo struct {
 	gamesWithRevsCount      *sqlx.Stmt
 	reviewsByGame           *sqlx.Stmt
 	trendingGamesNReviewsTs *sqlx.Stmt
+	totalGames              *sqlx.Stmt
+	avgRatings              *sqlx.Stmt
+	mostPopularGame         *sqlx.Stmt
+	mostPositiveGame        *sqlx.Stmt
+	mostNegativeGame        *sqlx.Stmt
+	avgReviewsPerGame       *sqlx.Stmt
+	mostActiveReviewer      *sqlx.Stmt
+	mostPositiveReviewer    *sqlx.Stmt
+	mostNegativeReviewer    *sqlx.Stmt
+	mostRecentReview        *sqlx.Stmt
 }
 
 func NewRepo(l *slog.Logger) (*GamesRepo, error) {
@@ -41,7 +51,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 
 	gq := goqu.New("postgres", db)
-	countR, err := db.Preparex("SELECT COUNT(id) FROM reviews where product_id = $1")
+	countR, err := db.Preparex("SELECT COUNT(id) FROM reviews WHERE product_id = $1")
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +111,118 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 		return nil, err
 	}
 
+	totalGames, err := db.Preparex(`
+    SELECT COUNT(*) AS total_games FROM games
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	avgRating, err := db.Preparex(`
+    SELECT AVG(rating_value) AS average_rating FROM reviews
+`)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: Finish using statements for stats overall on main page
+	mostPopularGame, err := db.Preparex(`
+    SELECT id, title, reviews_count
+    FROM games
+    ORDER BY reviews_count DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostPositiveGame, err := db.Preparex(`
+    SELECT g.id, g.title, COUNT(*) AS positive_reviews, (COUNT(*)::float / g.reviews_count::float * 100) AS positive_percentage
+    FROM games AS g
+    JOIN reviews AS r ON g.id = r.product_id
+    WHERE rating_value= 1
+    GROUP BY g.id, g.title, g.reviews_count
+    ORDER BY positive_percentage DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostNegativeGame, err := db.Preparex(`
+    SELECT g.id, g.title, COUNT(*) AS negative_reviews, (COUNT(*)::float / g.reviews_count::float * 100) AS negative_percentage
+    FROM games AS g
+    JOIN reviews AS r ON g.id = r.product_id
+    WHERE r.rating_value = 0
+    GROUP BY g.id, g.title, g.reviews_count
+    ORDER BY negative_percentage DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	avgReviewsPerGame, err := db.Preparex(`
+    SELECT AVG(reviews_count) AS average_reviews_per_game FROM games
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostActiveReviewer, err := db.Preparex(`
+    SELECT reviewer_id, COUNT(*) AS total_reviews
+    FROM reviews
+    GROUP BY reviewer_id
+    ORDER BY total_reviews DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostPositiveReviewer, err := db.Preparex(`
+    SELECT r.reviewer_id, COUNT(*) AS positive_reviews, (COUNT(*)::float / reviewer_totals.total_reviews::float * 100) AS positive_percentage
+    FROM reviews AS r
+    JOIN (
+        SELECT reviewer_id, COUNT(*) AS total_reviews
+        FROM reviews
+        GROUP BY reviewer_id
+    ) AS reviewer_totals ON r.reviewer_id = reviewer_totals.reviewer_id
+    WHERE r.rating_value= 1
+    GROUP BY r.reviewer_id, reviewer_totals.total_reviews
+    ORDER BY positive_percentage DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostNegativeReviewer, err := db.Preparex(`
+    SELECT reviews.reviewer_id, COUNT(*) AS negative_reviews, (COUNT(*)::float / reviewer_totals.total_reviews::float * 100) AS negative_percentage
+    FROM reviews
+    JOIN (
+        SELECT reviewer_id, COUNT(*) AS total_reviews
+        FROM reviews
+        GROUP BY reviewer_id
+    ) AS reviewer_totals ON reviews.reviewer_id = reviewer_totals.reviewer_id
+    WHERE rating_value= 0
+    GROUP BY reviews.reviewer_id, reviewer_totals.total_reviews
+    ORDER BY negative_percentage DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostRecentReview, err := db.Preparex(`
+    SELECT *
+    FROM reviews
+    ORDER BY creation_date DESC
+    LIMIT 1
+`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GamesRepo{
 		logger:                  l,
 		db:                      gq,
@@ -109,6 +231,16 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 		gamesWithRevsCount:      gamesWithReviewCount,
 		reviewsByGame:           reviewsByGame,
 		trendingGamesNReviewsTs: trendingGamesNReviewsTs,
+		totalGames:              totalGames,
+		avgRatings:              avgRating,
+		mostPopularGame:         mostPopularGame,
+		mostPositiveGame:        mostPositiveGame,
+		mostNegativeGame:        mostNegativeGame,
+		avgReviewsPerGame:       avgReviewsPerGame,
+		mostActiveReviewer:      mostActiveReviewer,
+		mostPositiveReviewer:    mostPositiveReviewer,
+		mostNegativeReviewer:    mostNegativeReviewer,
+		mostRecentReview:        mostRecentReview,
 	}, nil
 }
 
