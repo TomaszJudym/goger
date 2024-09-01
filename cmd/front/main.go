@@ -70,11 +70,11 @@ func main() {
 }
 
 type Game struct {
-	ID           string
-	Name         string
-	Rating       string
-	TotalReviews int
-	Data         []int
+	ID                 string
+	Name               string
+	Rating             string
+	TotalReviews       int
+	ReviewsPerHoursAgo []int
 }
 
 type IndexData struct {
@@ -111,14 +111,14 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		log.Printf("Failed to parse template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 
 	trending, err := db.MostReviewedGamesWithRevTs(48, 5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 	}
 
 	layout := "2006-01-02 15:04:05-07"
@@ -137,12 +137,15 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	trendingGames := []Game{
-		{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
-		{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
-		{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
-		{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
-		{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
+	trendingGames := make([]Game, len(trending))
+	for i, game := range trending {
+		trendingGames[i] = Game{
+			ID:                 strconv.Itoa(game.ID),
+			Name:               game.Title,
+			Rating:             strconv.Itoa(game.ReviewsRating),
+			TotalReviews:       game.TotalReviews,
+			ReviewsPerHoursAgo: reviewsByHours,
+		}
 	}
 
 	data := IndexData{
@@ -165,7 +168,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 
 	if err = tmpl.Execute(w, data); err != nil {
 		log.Printf("Failed to execute template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 
@@ -364,13 +367,13 @@ func renderGames(w http.ResponseWriter, page PageGames) {
 		ParseFiles("templates/games.html")
 	if err != nil {
 		log.Printf("Failed to parse template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 
 	if err = tmpl.Execute(w, page); err != nil {
 		log.Printf("Failed to execute template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 }
@@ -381,13 +384,13 @@ func renderReviews(w http.ResponseWriter, page ReviewsPage) {
 		ParseFiles("templates/reviews.html")
 	if err != nil {
 		log.Printf("Failed to parse template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 
 	if err = tmpl.Execute(w, page); err != nil {
 		log.Printf("Failed to execute template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		httpInternal(w)
 		return
 	}
 }
@@ -403,4 +406,8 @@ func seq(n int) []int {
 
 func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "static/favicon.png")
+}
+
+func httpInternal(w http.ResponseWriter) {
+	httpInternal(w)
 }
