@@ -20,8 +20,8 @@ type GamesRepo struct {
 	trendingGamesNReviewsTs *sqlx.Stmt
 	totalGames              *sqlx.Stmt
 	avgRatings              *sqlx.Stmt
-	mostPopularGame         *sqlx.Stmt
-	mostPositiveGame        *sqlx.Stmt
+	mostPopularGames        *sqlx.Stmt
+	mostPositiveGames       *sqlx.Stmt
 	mostNegativeGame        *sqlx.Stmt
 	avgReviewsPerGame       *sqlx.Stmt
 	mostActiveReviewer      *sqlx.Stmt
@@ -124,25 +124,25 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Finish using statements for stats overall on main page
-	mostPopularGame, err := db.Preparex(`
+
+	mostPopularGames, err := db.Preparex(`
     SELECT id, title, reviews_count
     FROM games
     ORDER BY reviews_count DESC
-    LIMIT 1
+    LIMIT $1
 `)
 	if err != nil {
 		return nil, err
 	}
 
-	mostPositiveGame, err := db.Preparex(`
+	mostPositiveGames, err := db.Preparex(`
     SELECT g.id, g.title, COUNT(*) AS positive_reviews, (COUNT(*)::float / g.reviews_count::float * 100) AS positive_percentage
     FROM games AS g
     JOIN reviews AS r ON g.id = r.product_id
     WHERE rating_value= 1
     GROUP BY g.id, g.title, g.reviews_count
     ORDER BY positive_percentage DESC
-    LIMIT 1
+    LIMIT $1
 `)
 	if err != nil {
 		return nil, err
@@ -180,16 +180,13 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 
 	mostPositiveReviewer, err := db.Preparex(`
-    SELECT r.reviewer_id, COUNT(*) AS positive_reviews, (COUNT(*)::float / reviewer_totals.total_reviews::float * 100) AS positive_percentage
-    FROM reviews AS r
-    JOIN (
-        SELECT reviewer_id, COUNT(*) AS total_reviews
+    SELECT reviewer_username
+    FROM (
+        SELECT reviewer_username, AVG(rating_value) AS avg_rating
         FROM reviews
-        GROUP BY reviewer_id
-    ) AS reviewer_totals ON r.reviewer_id = reviewer_totals.reviewer_id
-    WHERE r.rating_value= 1
-    GROUP BY r.reviewer_id, reviewer_totals.total_reviews
-    ORDER BY positive_percentage DESC
+        GROUP BY reviewer_username
+        ORDER BY avg_rating DESC
+    ) AS positive_reviewers
     LIMIT 1
 `)
 	if err != nil {
@@ -197,16 +194,13 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 
 	mostNegativeReviewer, err := db.Preparex(`
-    SELECT reviews.reviewer_id, COUNT(*) AS negative_reviews, (COUNT(*)::float / reviewer_totals.total_reviews::float * 100) AS negative_percentage
-    FROM reviews
-    JOIN (
-        SELECT reviewer_id, COUNT(*) AS total_reviews
+    SELECT reviewer_username
+    FROM (
+        SELECT reviewer_username, AVG(rating_value) AS avg_rating
         FROM reviews
-        GROUP BY reviewer_id
-    ) AS reviewer_totals ON reviews.reviewer_id = reviewer_totals.reviewer_id
-    WHERE rating_value= 0
-    GROUP BY reviews.reviewer_id, reviewer_totals.total_reviews
-    ORDER BY negative_percentage DESC
+        GROUP BY reviewer_username
+        ORDER BY avg_rating
+    ) AS positive_reviewers
     LIMIT 1
 `)
 	if err != nil {
@@ -233,8 +227,8 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 		trendingGamesNReviewsTs: trendingGamesNReviewsTs,
 		totalGames:              totalGames,
 		avgRatings:              avgRating,
-		mostPopularGame:         mostPopularGame,
-		mostPositiveGame:        mostPositiveGame,
+		mostPopularGames:        mostPopularGames,
+		mostPositiveGames:       mostPositiveGames,
 		mostNegativeGame:        mostNegativeGame,
 		avgReviewsPerGame:       avgReviewsPerGame,
 		mostActiveReviewer:      mostActiveReviewer,
@@ -286,10 +280,7 @@ func (r *GamesRepo) CreateGames(games []ProductRepo) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute query: %w", err)
 	}
-	// CreateGames inserts multiple games into the "games" table.
-	//
-	// It takes a slice of ProductRepo as a parameter, which represents the games to be inserted.
-	// The function returns the number of rows affected by the insertion and an error if any.
+
 	affected, err := res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
@@ -432,28 +423,18 @@ func (r *GamesRepo) GamesWithReviewsCount(offset, limit int) ([]UIGame, error) {
 	return games, nil
 }
 
-func (r *GamesRepo) MostReviewedGamesWithRevTs(hours, limit int) ([]TrendingGame, error) {
-	rows, err := r.trendingGamesNReviewsTs.Query(hours, limit)
+func (r *GamesRepo) MostReviewedGamesWithRevTs(hoursAgo, limit int) ([]TrendingGame, error) {
+	rows, err := r.trendingGamesNReviewsTs.Query(hoursAgo, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query with hours %d and limit: %d: %w",
-			hours, limit, err)
+			hoursAgo, limit, err)
 	}
 	defer rows.Close()
 
 	games := make([]TrendingGame, 0, limit)
-	for rows.Next() {
-		var game TrendingGame
-		err := rows.Scan(
-			&game.ID,
-			&game.Title,
-			&game.ReviewsRating,
-			&game.TotalReviews,
-			&game.ReviewDates,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan game: %w", err)
-		}
-		games = append(games, game)
+	err = sqlx.StructScan(rows, &games)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan game: %w", err)
 	}
 	return games, nil
 }
@@ -476,6 +457,91 @@ func (r *GamesRepo) ReviewsForGame(productID, offset, limit int) (RepoReviews, e
 		reviews = append(reviews, review)
 	}
 	return reviews, nil
+}
+
+func (r *GamesRepo) AverageReviewsPerGame() (float64, error) {
+	rows, err := r.avgReviewsPerGame.Query()
+	if err != nil {
+		return -1, fmt.Errorf("failed to query avg reviews per game: %w", err)
+	}
+	defer rows.Close()
+
+	var avg float64
+	for rows.Next() {
+		if err = rows.Scan(&avg); err != nil {
+			return -1, fmt.Errorf("failed to scan: %w", err)
+		}
+	}
+
+	return avg, nil
+}
+
+func (r *GamesRepo) MostActiveReviewer() (Reviewer, error) {
+	rows, err := r.mostActiveReviewer.Query()
+	if err != nil {
+		return Reviewer{}, fmt.Errorf("failed to query most active reviewer: %w", err)
+	}
+	defer rows.Close()
+
+	var reviewer Reviewer
+	for rows.Next() {
+		if err = rows.Scan(&reviewer.ID, &reviewer.Counters.Reviews); err != nil {
+			return Reviewer{}, fmt.Errorf("failed to scan: %w", err)
+		}
+	}
+
+	return reviewer, nil
+}
+
+func (r *GamesRepo) MostPositiveReviewer() (string, float64, error) {
+	rows, err := r.mostNegativeReviewer.Query()
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to query most negative reviewer: %w", err)
+	}
+	defer rows.Close()
+
+	var username string
+	var reviewsAvg float64
+	if rows.Next() {
+		if err = rows.Scan(&username, &reviewsAvg); err != nil {
+			return "", 0, fmt.Errorf("failed to scan: %w", err)
+		}
+	}
+
+	return username, reviewsAvg, nil
+}
+
+func (r *GamesRepo) MostNegativeReviewer() (string, float64, error) {
+	rows, err := r.mostNegativeReviewer.Query()
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to query most negative reviewer: %w", err)
+	}
+	defer rows.Close()
+
+	var username string
+	var reviewsAvg float64
+	if rows.Next() {
+		if err = rows.Scan(&username, &reviewsAvg); err != nil {
+			return "", 0, fmt.Errorf("failed to scan: %w", err)
+		}
+	}
+
+	return username, reviewsAvg, nil
+}
+
+func (r *GamesRepo) MostRecentReview() (Review, error) {
+	rows, err := r.mostRecentReview.Query()
+	if err != nil {
+		return Review{}, fmt.Errorf("failed to query most recent review: %w", err)
+	}
+	defer rows.Close()
+
+	var review Review
+	if err = sqlx.StructScan(rows, &review); err != nil {
+		return Review{}, fmt.Errorf("failed to structscan: %w", err)
+	}
+
+	return review, nil
 }
 
 func (r *GamesRepo) SaveNow() error {
@@ -508,4 +574,40 @@ func (r *GamesRepo) CreateRun(run RunRepo) error {
 	}
 
 	return nil
+}
+
+func (r *GamesRepo) MostPositiveGames(limit int) ([]ProductRepo, error) {
+	rows, err := r.mostPositiveGames.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exec most positive games query: %w", err)
+	}
+	defer rows.Close()
+
+	var games []ProductRepo
+	for rows.Next() {
+		var game ProductRepo
+		err = sqlx.StructScan(rows, &game)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan most positive games: %w", err)
+		}
+		games = append(games, game)
+	}
+
+	return games, nil
+}
+
+func (r *GamesRepo) MostPopularGames(limit int) ([]ProductRepo, error) {
+	rows, err := r.mostPopularGames.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exec most positive games query: %w", err)
+	}
+	defer rows.Close()
+
+	var games []ProductRepo
+	err = sqlx.StructScan(rows, &games)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan most positive games: %w", err)
+	}
+
+	return games, nil
 }

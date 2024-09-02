@@ -19,12 +19,20 @@ import (
 	"github.com/tomaszjudym/goger"
 )
 
+const dateLayout = "2006-01-02 15:04:05-07"
+
 type Repo interface {
 	GamesWithReviewsCount(offset, limit int) ([]goger.UIGame, error)
 	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
 	GameReviewsCount(gameID string) (int, error)
 	MostReviewedGamesWithRevTs(hours, limit int) ([]goger.TrendingGame, error)
+	AverageReviewsPerGame() (float64, error)
+	MostActiveReviewer() (goger.Reviewer, error)
+	MostPositiveReviewer() (string, float64, error)
+	MostNegativeReviewer() (string, float64, error)
+	MostRecentReview() (goger.Review, error)
+	MostPopularGames(limit int) ([]goger.ProductRepo, error)
 }
 
 type PageGames struct {
@@ -115,26 +123,10 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trending, err := db.MostReviewedGamesWithRevTs(48, 5)
+	trending, err := db.MostReviewedGamesWithRevTs(14*24, 5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
 		httpInternal(w)
-	}
-
-	layout := "2006-01-02 15:04:05-07"
-	reviewsByHours := make([]int, 48)
-	for _, game := range trending {
-		for _, d := range game.ReviewDates {
-			t, err := time.Parse(layout, d)
-			if err != nil {
-				log.Printf("Error parsing date: %s: %v", d, err)
-				break
-			}
-			hoursAgo := int(time.Since(t).Hours())
-			if hoursAgo < 48 {
-				reviewsByHours[47-hoursAgo]++
-			}
-		}
 	}
 
 	trendingGames := make([]Game, len(trending))
@@ -144,8 +136,16 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 			Name:               game.Title,
 			Rating:             strconv.Itoa(game.ReviewsRating),
 			TotalReviews:       game.TotalReviews,
-			ReviewsPerHoursAgo: reviewsByHours,
+			ReviewsPerHoursAgo: daysAgoCount(game.ReviewDates),
 		}
+		tr := trendingGames[i]
+		fmt.Printf("%d: %s - %v - %v\n", i, tr.Name, trendingGames[i].ReviewsPerHoursAgo, game.ReviewDates)
+	}
+
+	popularGames, err := db.MostPopularGames(5)
+	if err != nil {
+		log.Printf("Failed to get trending games: %v", err)
+		httpInternal(w)
 	}
 
 	data := IndexData{
@@ -395,6 +395,43 @@ func renderReviews(w http.ResponseWriter, page ReviewsPage) {
 	}
 }
 
+func daysAgoCount(dates []string) []int {
+	// Initialize a map to store the count of dates for each day ago
+	dayCount := make(map[int]int)
+
+	// Iterate over the date strings
+	for _, dateStr := range dates {
+		// Parse the date string into a time.Time object
+		t, err := time.Parse(dateLayout, dateStr)
+		if err != nil {
+			fmt.Println("Error parsing date:", err)
+			continue
+		}
+
+		// Calculate the difference in days from the current date
+		daysAgo := int(time.Since(t).Hours() / 24)
+
+		// Increment the count for that specific day ago
+		dayCount[daysAgo]++
+	}
+
+	// Find the maximum number of days ago in the map
+	maxDaysAgo := 0
+	for daysAgo := range dayCount {
+		if daysAgo > maxDaysAgo {
+			maxDaysAgo = daysAgo
+		}
+	}
+
+	// Create a slice to store the counts, indexed by days ago
+	result := make([]int, maxDaysAgo+1)
+	for daysAgo, count := range dayCount {
+		result[daysAgo] = count
+	}
+
+	return result
+}
+
 // TODO: Finish pagination. Display only +/- 30 (?) numbers
 func seq(n int) []int {
 	result := make([]int, n)
@@ -409,5 +446,5 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func httpInternal(w http.ResponseWriter) {
-	httpInternal(w)
+	http.Error(w, "Internal error", http.StatusInternalServerError)
 }

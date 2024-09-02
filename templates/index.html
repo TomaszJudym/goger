@@ -84,10 +84,12 @@
             new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: Array.from({length: 48}, (_, i) => {
-                        const now = new Date();
-                        now.setHours(now.getHours() - i);
-                        return `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+                    labels: Array.from({length: 14}, (_, i) => {
+                        const msPerDay = 1000 * 60 * 60 * 24;
+                        const daysAgo = Math.floor(i / 2);
+                        const now = Date.now() - (daysAgo * msPerDay);
+                        const date = new Date(now);
+                        return `${date.getDate()} ${date.toLocaleString('default', { month: 'long' })}`;
                     }).reverse(),
                     datasets: [{
                         data: chartData,
@@ -132,7 +134,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Rating</th>
-                        <th>Last 48 Hours</th>
+                        <th>Last 14 Days</th>
                         <th>Total reviews</th>
                     </tr>
                 </thead>
@@ -158,11 +160,15 @@
             <table class="table">
                 <thead>
                     <tr>
+                        <!-- TODO: Make top games display real data -->
+                        Consider this: https://github.com/guptarohit/asciigraph
+                        And this for charts: https://github.com/olekukonko/tablewriter
+                        Seems much cooler than this shit with JS
                         <th>Name</th>
-                        <th>Current Players</th>
-                        <th>Last 30 Days</th>
-                        <th>Peak Players</th>
-                        <th>Hours Played</th>
+                        <th>Total reviews</th>
+                        <th>Release date</th>
+                        <th>Peak 1 day reviews</th>
+                        <th>Users commented</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -186,7 +192,7 @@
                         <th>Name</th>
                         <th>Peak Players</th>
                         <th>Time</th>
-                        <th>Last 48 Hours</th>
+                        <th>Last 14 Days</th>
                     </tr>
                 </thead>
                 <tbody>
