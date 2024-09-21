@@ -133,7 +133,7 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Rating</th>
+                        <th>Rating / 50</th>
                         <th>Last 14 Days</th>
                         <th>Total reviews</th>
                     </tr>
@@ -156,7 +156,7 @@
             </table>
         </div>
         <div>
-            <h2>Games with most reviews</h2>
+            <h2>Most reviews</h2>
             <table class="table">
                 <thead>
                     <tr>
@@ -165,43 +165,51 @@
                         And this for charts: https://github.com/olekukonko/tablewriter
                         Seems much cooler than this shit with JS
                         <th>Name</th>
-                        <th>Total reviews</th>
+                        <th>Rating / 50</th>
                         <th>Release date</th>
-                        <th>Peak 1 day reviews</th>
-                        <th>Users commented</th>
+                        <th>Total reviews</th>
+                        <th>Developers</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{range .TopGames}}
                     <tr>
                         <td>{{.Name}}</td>
-                        <td>{{.TotalReviews}}</td>
-                        <td>Chuj</td>
-                        <td>{{.TotalReviews}}</td>
                         <td>{{.Rating}}</td>
-                    </tr>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.TotalReviews}}</td>
+                        <td>
+                        {{$developers := .Developers}}
+                        {{ range $index, $element := .Developers}}
+                            {{if $index}},{{end}}
+                            {{$element}}
+                        {{end}}
+                        </td>
+                        </tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
         <div>
-            <h2>Top Records</h2>
+            <h2>Most reviews in 1 day</h2>
             <table class="table">
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Peak Players</th>
-                        <th>Time</th>
-                        <th>Last 14 Days</th>
+                        <th>Rating / 50 this day</th>
+                        <th>Release date</th>
+                        <th>Day</th>
+                        <th>Reviews</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .TopRecords}}
+                    {{range .TopGamesIn1Day}}
                     <tr>
-                        <td>{{.Name}}</td>
-                        <td>{{.TotalReviews}}</td>
+                        <td>{{.Title}}</td>
                         <td>{{.Rating}}</td>
-                        <td>Chuj</td>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.ReviewDate}}</td> 
+                        <td>{{.TotalReviews}}</td> 
                     </tr>
                     {{end}}
                 </tbody>

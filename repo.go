@@ -11,23 +11,24 @@ import (
 )
 
 type GamesRepo struct {
-	logger                  *slog.Logger
-	db                      *goqu.Database
-	countGames              *sqlx.Stmt
-	countRevsForGame        *sqlx.Stmt
-	gamesWithRevsCount      *sqlx.Stmt
-	reviewsByGame           *sqlx.Stmt
-	trendingGamesNReviewsTs *sqlx.Stmt
-	totalGames              *sqlx.Stmt
-	avgRatings              *sqlx.Stmt
-	mostPopularGames        *sqlx.Stmt
-	mostPositiveGames       *sqlx.Stmt
-	mostNegativeGame        *sqlx.Stmt
-	avgReviewsPerGame       *sqlx.Stmt
-	mostActiveReviewer      *sqlx.Stmt
-	mostPositiveReviewer    *sqlx.Stmt
-	mostNegativeReviewer    *sqlx.Stmt
-	mostRecentReview        *sqlx.Stmt
+	logger                     *slog.Logger
+	db                         *goqu.Database
+	countGames                 *sqlx.Stmt
+	countRevsForGame           *sqlx.Stmt
+	gamesWithRevsCount         *sqlx.Stmt
+	reviewsByGame              *sqlx.Stmt
+	trendingGamesNReviewsTs    *sqlx.Stmt
+	totalGames                 *sqlx.Stmt
+	avgRatings                 *sqlx.Stmt
+	mostPopularGames           *sqlx.Stmt
+	mostPositiveGames          *sqlx.Stmt
+	mostNegativeGame           *sqlx.Stmt
+	avgReviewsPerGame          *sqlx.Stmt
+	mostActiveReviewer         *sqlx.Stmt
+	mostPositiveReviewer       *sqlx.Stmt
+	mostNegativeReviewer       *sqlx.Stmt
+	mostRecentReview           *sqlx.Stmt
+	gamesWithMostReviewsIn1Day *sqlx.Stmt
 }
 
 func NewRepo(l *slog.Logger) (*GamesRepo, error) {
@@ -126,7 +127,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 
 	mostPopularGames, err := db.Preparex(`
-    SELECT id, title, reviews_count
+    SELECT id, title, reviews_count, reviews_rating, TO_CHAR(release_date, 'DD-MM-YYYY') AS release_date, developers
     FROM games
     ORDER BY reviews_count DESC
     LIMIT $1
@@ -217,24 +218,49 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 		return nil, err
 	}
 
+	gamesWithMostReviewsIn1Day, err := db.Preparex(`
+WITH daily_reviews AS (
+    SELECT product_id, DATE(review_date) AS review_date, COUNT(*) AS review_count, AVG(rating_value) AS average_rating
+    FROM reviews
+    GROUP BY product_id, DATE(review_date)
+),
+max_daily_reviews AS (
+    SELECT product_id, review_date, review_count, average_rating,
+           ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY review_count DESC) AS rn
+    FROM daily_reviews
+)
+SELECT g.title, 
+TO_CHAR(mdr.review_date, 'DD-MM-YYYY') AS review_date, TO_CHAR(g.release_date, 'DD-MM-YYYY') AS release_date,
+mdr.review_count AS total_reviews, ROUND(mdr.average_rating, 2) AS rating
+FROM max_daily_reviews mdr
+JOIN games g ON g.id = mdr.product_id
+WHERE mdr.rn = 1
+ORDER BY total_reviews DESC
+LIMIT $1;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GamesRepo{
-		logger:                  l,
-		db:                      gq,
-		countRevsForGame:        countR,
-		countGames:              countG,
-		gamesWithRevsCount:      gamesWithReviewCount,
-		reviewsByGame:           reviewsByGame,
-		trendingGamesNReviewsTs: trendingGamesNReviewsTs,
-		totalGames:              totalGames,
-		avgRatings:              avgRating,
-		mostPopularGames:        mostPopularGames,
-		mostPositiveGames:       mostPositiveGames,
-		mostNegativeGame:        mostNegativeGame,
-		avgReviewsPerGame:       avgReviewsPerGame,
-		mostActiveReviewer:      mostActiveReviewer,
-		mostPositiveReviewer:    mostPositiveReviewer,
-		mostNegativeReviewer:    mostNegativeReviewer,
-		mostRecentReview:        mostRecentReview,
+		logger:                     l,
+		db:                         gq,
+		countRevsForGame:           countR,
+		countGames:                 countG,
+		gamesWithRevsCount:         gamesWithReviewCount,
+		reviewsByGame:              reviewsByGame,
+		trendingGamesNReviewsTs:    trendingGamesNReviewsTs,
+		totalGames:                 totalGames,
+		avgRatings:                 avgRating,
+		mostPopularGames:           mostPopularGames,
+		mostPositiveGames:          mostPositiveGames,
+		mostNegativeGame:           mostNegativeGame,
+		avgReviewsPerGame:          avgReviewsPerGame,
+		mostActiveReviewer:         mostActiveReviewer,
+		mostPositiveReviewer:       mostPositiveReviewer,
+		mostNegativeReviewer:       mostNegativeReviewer,
+		mostRecentReview:           mostRecentReview,
+		gamesWithMostReviewsIn1Day: gamesWithMostReviewsIn1Day,
 	}, nil
 }
 
@@ -606,7 +632,23 @@ func (r *GamesRepo) MostPopularGames(limit int) ([]ProductRepo, error) {
 	var games []ProductRepo
 	err = sqlx.StructScan(rows, &games)
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan most positive games: %w", err)
+		return nil, fmt.Errorf("failed to scan most popular games: %w", err)
+	}
+
+	return games, nil
+}
+
+func (r *GamesRepo) GamesWithMostReviewsIn1Day(limit int) ([]GameWithMostReviewsIn1Day, error) {
+	rows, err := r.gamesWithMostReviewsIn1Day.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exec games with most reviews in 1 day: %w", err)
+	}
+	defer rows.Close()
+
+	var games []GameWithMostReviewsIn1Day
+	err = sqlx.StructScan(rows, &games)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan games with most reviews in 1 day: %w", err)
 	}
 
 	return games, nil

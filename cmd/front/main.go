@@ -7,11 +7,9 @@ import (
 	"html/template"
 	"log"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -33,6 +31,7 @@ type Repo interface {
 	MostNegativeReviewer() (string, float64, error)
 	MostRecentReview() (goger.Review, error)
 	MostPopularGames(limit int) ([]goger.ProductRepo, error)
+	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
 }
 
 type PageGames struct {
@@ -69,7 +68,6 @@ func init() {
 func main() {
 	http.HandleFunc("/", handlerIndex)
 	http.HandleFunc("/games", handlerGames)
-	http.HandleFunc("/games/", handlerReviews)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/favicon.ico", faviconHandler)
 	const port = "8080"
@@ -81,22 +79,16 @@ type Game struct {
 	ID                 string
 	Name               string
 	Rating             string
+	ReleaseDate        string
 	TotalReviews       int
 	ReviewsPerHoursAgo []int
+	Developers         []string
 }
 
 type IndexData struct {
-	Trending   []Game
-	TopGames   []Game
-	TopRecords []Game
-}
-
-func randomIntArray(size int) []int {
-	result := make([]int, size)
-	for i := range result {
-		result[i] = rand.Intn(100)
-	}
-	return result
+	Trending       []Game
+	TopGames       []Game
+	TopGamesIn1Day []goger.GameWithMostReviewsIn1Day
 }
 
 type Stats struct {
@@ -125,7 +117,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 
 	trending, err := db.MostReviewedGamesWithRevTs(14*24, 5)
 	if err != nil {
-		log.Printf("Failed to get trending games: %v", err)
+		log.Printf("Failed to get most reviewed games with rev ts: %v", err)
 		httpInternal(w)
 	}
 
@@ -138,8 +130,6 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 			TotalReviews:       game.TotalReviews,
 			ReviewsPerHoursAgo: daysAgoCount(game.ReviewDates),
 		}
-		tr := trendingGames[i]
-		fmt.Printf("%d: %s - %v - %v\n", i, tr.Name, trendingGames[i].ReviewsPerHoursAgo, game.ReviewDates)
 	}
 
 	popularGames, err := db.MostPopularGames(5)
@@ -148,22 +138,28 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		httpInternal(w)
 	}
 
+	top := make([]Game, len(popularGames))
+	for i, game := range popularGames {
+		top[i] = Game{
+			ID:           game.ID,
+			TotalReviews: game.ReviewsCount,
+			Name:         game.Title,
+			ReleaseDate:  game.ReleaseDate,
+			Rating:       strconv.Itoa(game.ReviewsRating),
+			Developers:   game.Developers,
+		}
+	}
+
+	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
+	if err != nil {
+		log.Printf("Failed to games with most reviews in 1 day: %v", err)
+		httpInternal(w)
+	}
+
 	data := IndexData{
-		Trending: trendingGames,
-		TopGames: []Game{
-			{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
-			{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
-			{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
-			{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
-			{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
-		},
-		TopRecords: []Game{
-			{"1", "480% Orange Juice", "+1442.6%", 1493, randomIntArray(48)},
-			{"2", "ENDLESS™ Legend", "+946.9%", 2306, randomIntArray(48)},
-			{"3", "Wizard with a Gun", "+425.5%", 114, randomIntArray(48)},
-			{"4", "Minecraft Dungeons", "+277.0%", 1748, randomIntArray(48)},
-			{"5", "Wildermyth", "+242.1%", 1347, randomIntArray(48)},
-		},
+		Trending:       trendingGames,
+		TopGames:       top,
+		TopGamesIn1Day: mostRevsIn1DayGames,
 	}
 
 	if err = tmpl.Execute(w, data); err != nil {
@@ -172,7 +168,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Served games in %v, from IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
+	log.Printf("Served games in %v, for IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
 }
 
 func handlerGames(w http.ResponseWriter, r *http.Request) {
@@ -275,92 +271,6 @@ func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
 	return games, nil
 }
 
-func handlerReviews(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	// Get page parameter from the query string
-	segments := strings.Split(r.URL.Path, "/")
-	l := len(segments)
-	if l != 4 {
-		msg := fmt.Sprintf("Want 4 path elems got: %d in %v", l, segments)
-		http.Error(w, msg, http.StatusBadRequest)
-		log.Println(msg)
-		return
-	}
-
-	gameID := segments[2]
-	id, err := strconv.Atoi(gameID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid game ID: %s", gameID), http.StatusBadRequest)
-		log.Printf("Failed to convert gameID: %s to int: %v", gameID, err)
-		return
-	}
-
-	page, err := strconv.Atoi(r.URL.Query().Get("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-	var reviews goger.RepoReviews
-	var count int
-	reviewsKey := fmt.Sprintf("reviews:%d:page:%d", id, page)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	reviewsJson, err := rdb.Get(ctx, reviewsKey).Result()
-	if err == redis.Nil {
-		// Cache miss, fetch from DB and cache it
-		errs := make(chan error, 2)
-
-		go func() {
-			var err error
-			reviews, err = db.ReviewsForGame(id, (page-1)*50, 50)
-			if err != nil {
-				errs <- fmt.Errorf("failed to get page: %d reviews for game: %s, err: %v", page, gameID, err)
-				return
-			}
-			errs <- nil
-		}()
-
-		go func() {
-			var err error
-			count, err = db.GameReviewsCount(gameID)
-			if err != nil {
-				errs <- fmt.Errorf("failed to count reviews of game: %s, err: %v", gameID, err)
-				return
-			}
-			errs <- nil
-		}()
-
-		for i := 0; i < 2; i++ {
-			err := <-errs
-			if err != nil {
-				http.Error(w, "Internal error", http.StatusInternalServerError)
-				log.Print(err)
-				return
-			}
-		}
-		reviewsJson, err := json.Marshal(reviews)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Println("Failed to unmarshal reviews:", err)
-			return
-		}
-		rdb.Set(ctx, reviewsKey, reviewsJson, 30*time.Minute) // Adjust TTL as needed
-	} else if err != nil {
-		log.Printf("Error getting reviews from cache: %v", err)
-		// Handle error
-	} else {
-		// Cache hit, deserialize JSON to reviews
-		if err = json.Unmarshal([]byte(reviewsJson), &reviews); err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			log.Println("Failed to unmarshal reviews from cache:", err)
-			return
-		}
-	}
-
-	renderReviews(w, ReviewsPage{Reviews: reviews.ToUI(), TotalPages: count / 50})
-	log.Printf("Served %d reviews in: %v IP: %s URI: %s", len(reviews), time.Since(start), r.RemoteAddr, r.RequestURI)
-}
-
 func renderGames(w http.ResponseWriter, page PageGames) {
 	tmpl, err := template.New("games.html").
 		Funcs(template.FuncMap{"seq": seq}).
@@ -378,44 +288,21 @@ func renderGames(w http.ResponseWriter, page PageGames) {
 	}
 }
 
-func renderReviews(w http.ResponseWriter, page ReviewsPage) {
-	tmpl, err := template.New("reviews.html").
-		Funcs(template.FuncMap{"seq": seq}).
-		ParseFiles("templates/reviews.html")
-	if err != nil {
-		log.Printf("Failed to parse template: %v", err)
-		httpInternal(w)
-		return
-	}
-
-	if err = tmpl.Execute(w, page); err != nil {
-		log.Printf("Failed to execute template: %v", err)
-		httpInternal(w)
-		return
-	}
-}
-
 func daysAgoCount(dates []string) []int {
-	// Initialize a map to store the count of dates for each day ago
 	dayCount := make(map[int]int)
 
-	// Iterate over the date strings
 	for _, dateStr := range dates {
-		// Parse the date string into a time.Time object
 		t, err := time.Parse(dateLayout, dateStr)
 		if err != nil {
 			fmt.Println("Error parsing date:", err)
 			continue
 		}
 
-		// Calculate the difference in days from the current date
 		daysAgo := int(time.Since(t).Hours() / 24)
 
-		// Increment the count for that specific day ago
 		dayCount[daysAgo]++
 	}
 
-	// Find the maximum number of days ago in the map
 	maxDaysAgo := 0
 	for daysAgo := range dayCount {
 		if daysAgo > maxDaysAgo {
@@ -423,7 +310,6 @@ func daysAgoCount(dates []string) []int {
 		}
 	}
 
-	// Create a slice to store the counts, indexed by days ago
 	result := make([]int, maxDaysAgo+1)
 	for daysAgo, count := range dayCount {
 		result[daysAgo] = count

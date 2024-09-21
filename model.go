@@ -121,6 +121,7 @@ type ProductRepo struct {
 	ProductState             string         `db:"product_state" json:"productState"`
 	Genres                   pq.StringArray `db:"genres" json:"genres"`
 	Tags                     pq.StringArray `db:"tags" json:"tags"`
+	ReviewsCount             int            `db:"reviews_count" json:"reviewsCount"`
 	ReviewsRating            int            `db:"reviews_rating" json:"reviewsRating"`
 	UpdatedAt                []byte         `db:"updated_at" json:"-"`
 }
@@ -332,6 +333,7 @@ type Links struct {
 	Vote   Vote   `json:"vote"`
 	Report Report `json:"report"`
 }
+
 type MostHelpful struct {
 	ID                 string    `json:"id"`
 	ProductID          string    `json:"productId"`
@@ -542,6 +544,14 @@ type TrendingGame struct {
 	ReviewsRating int            `db:"reviews_rating"`
 	TotalReviews  int            `db:"total_reviews"`
 	ReviewDates   pq.StringArray `db:"review_dates"`
+}
+
+type GameWithMostReviewsIn1Day struct {
+	Title        string  `db:"title"`
+	ReleaseDate  string  `db:"release_date"`
+	ReviewDate   string  `db:"review_date"`
+	TotalReviews int     `db:"total_reviews"`
+	Rating       float64 `db:"rating"`
 }
 
 type UIGame struct {
