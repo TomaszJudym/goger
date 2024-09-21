@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -45,11 +44,10 @@ type ReviewsPage struct {
 	TotalPages int
 }
 
-const pageSize = 100
-
 var (
-	db  Repo
-	rdb *redis.Client
+	db        Repo
+	rdb       *redis.Client
+	indexTmpl *template.Template
 )
 
 func init() {
@@ -64,14 +62,19 @@ func init() {
 		Password: "",
 		DB:       0, // Use default DB
 	})
+
+	indexTmpl, err = template.ParseFiles("templates/index.html")
+	if err != nil {
+		log.Fatalf("Failed to parse index template: %v", err)
+	}
+
 }
 
 func main() {
+	const port = "8080"
 	http.HandleFunc("/", handlerIndex)
-	http.HandleFunc("/games", handlerGames)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/favicon.ico", faviconHandler)
-	const port = "8080"
 	log.Printf("Server running on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
@@ -92,6 +95,7 @@ type IndexData struct {
 	TopGamesIn1Day []goger.GameWithMostReviewsIn1Day
 }
 
+// TODO: Display on top of page
 type Stats struct {
 	TotalGames        int
 	AvgRatings        float64
@@ -119,14 +123,11 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to write to response after cache hit: %v", err)
 			httpInternal(w)
 		}
-		return
-	}
-
-	// TODO: Parse once and save
-	tmpl, err := template.ParseFiles("templates/index.html")
-	if err != nil {
-		log.Printf("Failed to parse template: %v", err)
-		httpInternal(w)
+		// Refresh TTL
+		if _, err = rdb.Expire(ctx, "index", time.Minute).Result(); err != nil {
+			log.Printf("Failed to refresh cache ttl: %v", err)
+			httpInternal(w)
+		}
 		return
 	}
 
@@ -178,7 +179,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buff bytes.Buffer
-	if err = tmpl.Execute(&buff, data); err != nil {
+	if err = indexTmpl.Execute(&buff, data); err != nil {
 		log.Printf("Failed to execute template: %v", err)
 		httpInternal(w)
 		return
@@ -191,126 +192,8 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Served games in %v, for IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
-	// Saved page bytes to cache for 1min
 	if err = rdb.Set(ctx, "index", buff.Bytes(), time.Minute).Err(); err != nil {
 		log.Printf("Failed to save index page to cache: %v", err)
-	}
-}
-
-func handlerGames(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	// Get page parameter from the query string
-	page, err := strconv.Atoi(r.URL.Query().Get("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	var games []goger.UIGame
-	var pagesCount int
-	errs := make(chan error, 2)
-
-	go func() {
-		var err error
-		games, err = getGamesWithRevsCount((page-1)*pageSize, pageSize)
-		errs <- err
-	}()
-	go func() {
-		var err error
-		gamesCount, err := getGamesCount()
-		pagesCount = gamesCount / pageSize
-		if page > pagesCount {
-			page = 1
-		}
-		errs <- err
-	}()
-
-	for i := 0; i < cap(errs); i++ {
-		select {
-		case err = <-errs:
-			if err != nil {
-				log.Printf("Failed to get games: %v", err)
-			}
-		case <-time.After(10 * time.Second):
-			log.Printf("Timeout 10s getting games")
-			http.Error(w, "Timeout getting games", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	renderGames(w, PageGames{Games: games, TotalPages: pagesCount})
-	log.Printf("Served games in %v, from IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
-}
-
-func getGamesCount() (int, error) {
-	const gamesCountKey = `games:count`
-	var gamesCount int
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	val, err := rdb.Get(ctx, gamesCountKey).Result()
-	if err == nil {
-		gamesCount, err = strconv.Atoi(val)
-		if err != nil {
-			err = fmt.Errorf("failed to parse games count from cache: %w", err)
-		}
-	}
-	if err != nil {
-		if err != redis.Nil {
-			log.Printf("Failed to get games count from cache: %v", err)
-		}
-		var err2 error
-		gamesCount, err2 = db.CountGames()
-		if err2 != nil {
-			return 0, fmt.Errorf("failed to count games from db: %w", err2)
-		}
-		if err3 := rdb.Set(ctx, gamesCountKey, gamesCount, 10*time.Minute).Err(); err3 != nil {
-			log.Printf("Failed to cache games count: %v", err3)
-		}
-	}
-	return gamesCount, nil
-}
-
-func getGamesWithRevsCount(offset, limit int) ([]goger.UIGame, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	const gamesKey = `games-with-reviews:count:%d:%d`
-	val, err := rdb.Get(ctx, fmt.Sprintf(gamesKey, offset, limit)).Result()
-	if err == nil {
-		var games []goger.UIGame
-		if err = json.Unmarshal([]byte(val), &games); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal games from cache: %w", err)
-		}
-		fmt.Println("CACHE HIT for games", offset, limit)
-		return games, nil
-	}
-	games, err := db.GamesWithReviewsCount(offset, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get games from db: %w", err)
-	}
-	gamesBytes, err := json.Marshal(games)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal games from db: %w", err)
-	}
-	if err := rdb.Set(ctx, fmt.Sprintf(gamesKey, offset, limit), string(gamesBytes), 10*time.Minute).Err(); err != nil {
-		return nil, fmt.Errorf("failed to set games in cache: %w", err)
-	}
-	return games, nil
-}
-
-func renderGames(w http.ResponseWriter, page PageGames) {
-	tmpl, err := template.New("games.html").
-		Funcs(template.FuncMap{"seq": seq}).
-		ParseFiles("templates/games.html")
-	if err != nil {
-		log.Printf("Failed to parse template: %v", err)
-		httpInternal(w)
-		return
-	}
-
-	if err = tmpl.Execute(w, page); err != nil {
-		log.Printf("Failed to execute template: %v", err)
-		httpInternal(w)
-		return
 	}
 }
 
@@ -341,15 +224,6 @@ func daysAgoCount(dates []string) []int {
 		result[daysAgo] = count
 	}
 
-	return result
-}
-
-// TODO: Finish pagination. Display only +/- 30 (?) numbers
-func seq(n int) []int {
-	result := make([]int, n)
-	for i := range result {
-		result[i] = i + 1
-	}
 	return result
 }
 
