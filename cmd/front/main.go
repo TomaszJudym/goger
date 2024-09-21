@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -107,6 +108,20 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	if err != nil || page < 1 {
 		page = 1
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// Check in redis cache for recent response of main page
+
+	b, err := rdb.Get(context.Background(), "index").Bytes()
+	if err == nil {
+		if _, err = w.Write(b); err != nil {
+			log.Printf("Failed to write to response after cache hit: %v", err)
+			httpInternal(w)
+		}
+		return
+	}
+
 	// TODO: Parse once and save
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
@@ -162,13 +177,24 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		TopGamesIn1Day: mostRevsIn1DayGames,
 	}
 
-	if err = tmpl.Execute(w, data); err != nil {
+	var buff bytes.Buffer
+	if err = tmpl.Execute(&buff, data); err != nil {
 		log.Printf("Failed to execute template: %v", err)
 		httpInternal(w)
 		return
 	}
 
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.Printf("Failed to write response: %v", err)
+		httpInternal(w)
+		return
+	}
+
 	log.Printf("Served games in %v, for IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
+	// Saved page bytes to cache for 1min
+	if err = rdb.Set(ctx, "index", buff.Bytes(), time.Minute).Err(); err != nil {
+		log.Printf("Failed to save index page to cache: %v", err)
+	}
 }
 
 func handlerGames(w http.ResponseWriter, r *http.Request) {
