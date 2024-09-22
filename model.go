@@ -635,3 +635,8 @@ type RunRepo struct {
 	StartTs time.Time `db:"start_ts"`
 	EndTs   time.Time `db:"end_ts"`
 }
+
+type LanguageCount struct {
+	Language    string `db:"language"`
+	ReviewCount int    `db:"review_count"`
+}

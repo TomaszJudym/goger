@@ -26,6 +26,7 @@ type GamesRepo struct {
 	mostPositiveGames          *sqlx.Stmt
 	mostNegativeGames          *sqlx.Stmt
 	avgReviewsPerGame          *sqlx.Stmt
+	topLanguages               *sqlx.Stmt
 	gamesWithMostReviewsIn1Day *sqlx.Stmt
 }
 
@@ -187,6 +188,17 @@ LIMIT $1;
 		return nil, err
 	}
 
+	topLanguages, err := db.Preparex(`
+SELECT split_part(language, '-', 2) AS language, COUNT(*) AS review_count
+FROM reviews
+GROUP BY language
+ORDER BY review_count DESC
+LIMIT $1;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GamesRepo{
 		logger:                     l,
 		db:                         gq,
@@ -202,6 +214,7 @@ LIMIT $1;
 		mostNegativeGames:          mostNegativeGames,
 		avgReviewsPerGame:          avgReviewsPerGame,
 		gamesWithMostReviewsIn1Day: gamesWithMostReviewsIn1Day,
+		topLanguages:               topLanguages,
 	}, nil
 }
 
@@ -517,4 +530,25 @@ func (r *GamesRepo) GamesWithMostReviewsIn1Day(limit int) ([]GameWithMostReviews
 	}
 
 	return games, nil
+}
+
+func (r *GamesRepo) TopLanguages(limit int) ([]LanguageCount, error) {
+	// Prepare the query
+	rows, err := r.topLanguages.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query top languages: %w", err)
+	}
+	defer rows.Close()
+
+	// Define a slice to hold the results
+	var langs []LanguageCount
+
+	// Execute the query and map the results to the slice
+	err = sqlx.StructScan(rows, &langs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan top languages: %w", err)
+	}
+
+	// Return the results
+	return langs, nil
 }

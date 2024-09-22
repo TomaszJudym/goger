@@ -93,6 +93,11 @@
             margin-top: 0;
             font-size: 1.5em;
         }
+
+        .language-item {
+            margin: 10px 0;
+            font-size: 16px;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -297,8 +302,12 @@
         <div class="grid-container">
             <!-- Column 1 -->
             <div class="grid-item">
-                <h2>Header 1</h2>
-                <p>Content for grid piece 1 goes here.</p>
+                <h2>Comments per language</h2>
+                    {{range .TopLanguages}}
+                        <div class="language-item">
+                            <strong>{{.Language}}</strong>: {{.ReviewCount}}
+                        </div>
+                    {{end}}
             </div>
             <div class="grid-item">
                 <h2>Header 2</h2>

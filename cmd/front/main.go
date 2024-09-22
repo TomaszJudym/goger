@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
@@ -26,6 +25,7 @@ type Repo interface {
 	MostPopularGames(limit int) (goger.ProductsRepo, error)
 	MostPositiveGames(limit int) (goger.ProductsRepo, error)
 	MostNegativeGames(limit int) (goger.ProductsRepo, error)
+	TopLanguages(limit int) ([]goger.LanguageCount, error)
 	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
 }
 
@@ -70,6 +70,7 @@ type IndexData struct {
 	TopNegative    []goger.UIGame
 	TopPositive    []goger.UIGame
 	TopGamesIn1Day []goger.GameWithMostReviewsIn1Day
+	TopLanguages   []goger.LanguageCount
 }
 
 // TODO: Display on top of page
@@ -146,14 +147,10 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	negative := negativeGames.ToUI()
 
-	fmt.Println("### POSITIVE")
-	for _, p := range positive {
-		fmt.Println(p.Name, " ", p.Rating, " ", p.ReleaseDate, " ", p.TotalReviews)
-	}
-
-	fmt.Println("### NEGATIVE")
-	for _, p := range negative {
-		fmt.Println(p.Name, " ", p.Rating, " ", p.ReleaseDate, " ", p.TotalReviews)
+	topLanguages, err := db.TopLanguages(5)
+	if err != nil {
+		log.Printf("Failed to get top languages: %v", err)
+		httpInternal(w)
 	}
 
 	data := IndexData{
@@ -162,6 +159,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		TopGamesIn1Day: mostRevsIn1DayGames,
 		TopPositive:    positive,
 		TopNegative:    negative,
+		TopLanguages:   topLanguages,
 	}
 
 	var buff bytes.Buffer
