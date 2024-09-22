@@ -111,6 +111,7 @@ func (f *fetcher) run() error {
 				return newReviewer(f.repo, f.logger).download(inTitle, inGameID)
 			})
 		}
+		// TODO: Invalidate cache
 	}
 
 	if err := group.Wait(); err != nil {

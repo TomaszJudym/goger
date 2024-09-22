@@ -76,6 +76,23 @@
         .table th, .table td {
             width: 25%;
         }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* 3 columns */
+            grid-gap: 20px; /* spacing between */
+            padding: 20px;
+        }
+        .grid-item {
+            border: 1px solid #ccc;
+            padding: 20px;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        .grid-item h2 {
+            margin-top: 0;
+            font-size: 1.5em;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -166,13 +183,13 @@
                         Seems much cooler than this shit with JS
                         <th>Name</th>
                         <th>Rating / 50</th>
-                        <th>Release date</th>
+                        <th>Release</th>
                         <th>Total reviews</th>
                         <th>Developers</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .TopGames}}
+                    {{range .Top}}
                     <tr>
                         <td>{{.Name}}</td>
                         <td>{{.Rating}}</td>
@@ -197,7 +214,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Rating / 50 this day</th>
-                        <th>Release date</th>
+                        <th>Release</th>
                         <th>Day</th>
                         <th>Reviews</th>
                     </tr>
@@ -214,6 +231,97 @@
                     {{end}}
                 </tbody>
             </table>
+        </div>
+        <div>
+            <h2>Most positive</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Rating / 50</th>
+                        <th>Release</th>
+                        <th>Total reviews</th>
+                        <th>Developers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopPositive}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td>{{.Rating}}</td>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.TotalReviews}}</td>
+                        <td>
+                        {{$developers := .Developers}}
+                        {{ range $index, $element := .Developers}}
+                            {{if $index}},{{end}}
+                            {{$element}}
+                        {{end}}
+                        </td>
+                        </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <h2>Most negative</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Rating / 50</th>
+                        <th>Release</th>
+                        <th>Reviews</th>
+                        <th>Developers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopNegative}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td>{{.Rating}}</td>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.TotalReviews}}</td>
+                        <td>
+                        {{$developers := .Developers}}
+                        {{ range $index, $element := .Developers}}
+                            {{if $index}},{{end}}
+                            {{$element}}
+                        {{end}}
+                        </td>
+                        </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        <div class="grid-container">
+            <!-- Column 1 -->
+            <div class="grid-item">
+                <h2>Header 1</h2>
+                <p>Content for grid piece 1 goes here.</p>
+            </div>
+            <div class="grid-item">
+                <h2>Header 2</h2>
+                <p>Content for grid piece 2 goes here.</p>
+            </div>
+            <!-- Column 2 -->
+            <div class="grid-item">
+                <h2>Header 3</h2>
+                <p>Content for grid piece 3 goes here.</p>
+            </div>
+            <div class="grid-item">
+                <h2>Header 4</h2>
+                <p>Content for grid piece 4 goes here.</p>
+            </div>
+            <!-- Column 3 -->
+            <div class="grid-item">
+                <h2>Header 3</h2>
+                <p>Content for grid piece 3 goes here.</p>
+            </div>
+            <div class="grid-item">
+                <h2>Header 4</h2>
+                <p>Content for grid piece 4 goes here.</p>
+            </div>
         </div>
         <div class="footer">
             An ongoing analysis of Gog's games and reviews.

@@ -17,31 +17,16 @@ import (
 	"github.com/tomaszjudym/goger"
 )
 
-const dateLayout = "2006-01-02 15:04:05-07"
-
 type Repo interface {
-	GamesWithReviewsCount(offset, limit int) ([]goger.UIGame, error)
 	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
 	GameReviewsCount(gameID string) (int, error)
-	MostReviewedGamesWithRevTs(hours, limit int) ([]goger.TrendingGame, error)
+	MostReviewedGamesWithRevTs(hours, limit int) (goger.TrendingGames, error)
 	AverageReviewsPerGame() (float64, error)
-	MostActiveReviewer() (goger.Reviewer, error)
-	MostPositiveReviewer() (string, float64, error)
-	MostNegativeReviewer() (string, float64, error)
-	MostRecentReview() (goger.Review, error)
-	MostPopularGames(limit int) ([]goger.ProductRepo, error)
+	MostPopularGames(limit int) (goger.ProductsRepo, error)
+	MostPositiveGames(limit int) (goger.ProductsRepo, error)
+	MostNegativeGames(limit int) (goger.ProductsRepo, error)
 	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
-}
-
-type PageGames struct {
-	Games      []goger.UIGame
-	TotalPages int
-}
-
-type ReviewsPage struct {
-	Reviews    []goger.UIReview
-	TotalPages int
 }
 
 var (
@@ -79,19 +64,11 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-type Game struct {
-	ID                 string
-	Name               string
-	Rating             string
-	ReleaseDate        string
-	TotalReviews       int
-	ReviewsPerHoursAgo []int
-	Developers         []string
-}
-
 type IndexData struct {
-	Trending       []Game
-	TopGames       []Game
+	Trending       []goger.UIGame
+	Top            []goger.UIGame
+	TopNegative    []goger.UIGame
+	TopPositive    []goger.UIGame
 	TopGamesIn1Day []goger.GameWithMostReviewsIn1Day
 }
 
@@ -131,51 +108,60 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trending, err := db.MostReviewedGamesWithRevTs(14*24, 5)
+	trendingGames, err := db.MostReviewedGamesWithRevTs(14*24, 5)
 	if err != nil {
 		log.Printf("Failed to get most reviewed games with rev ts: %v", err)
 		httpInternal(w)
 	}
+	trending := trendingGames.ToUI()
 
-	trendingGames := make([]Game, len(trending))
-	for i, game := range trending {
-		trendingGames[i] = Game{
-			ID:                 strconv.Itoa(game.ID),
-			Name:               game.Title,
-			Rating:             strconv.Itoa(game.ReviewsRating),
-			TotalReviews:       game.TotalReviews,
-			ReviewsPerHoursAgo: daysAgoCount(game.ReviewDates),
-		}
-	}
-
-	popularGames, err := db.MostPopularGames(5)
+	games, err := db.MostPopularGames(5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
 		httpInternal(w)
+		return
 	}
-
-	top := make([]Game, len(popularGames))
-	for i, game := range popularGames {
-		top[i] = Game{
-			ID:           game.ID,
-			TotalReviews: game.ReviewsCount,
-			Name:         game.Title,
-			ReleaseDate:  game.ReleaseDate,
-			Rating:       strconv.Itoa(game.ReviewsRating),
-			Developers:   game.Developers,
-		}
-	}
+	popular := games.ToUI()
 
 	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
 	if err != nil {
 		log.Printf("Failed to games with most reviews in 1 day: %v", err)
 		httpInternal(w)
+		return
+	}
+
+	games, err = db.MostPositiveGames(5)
+	if err != nil {
+		log.Printf("Failed to get most positive games: %v", err)
+		httpInternal(w)
+		return
+	}
+	positive := games.ToUI()
+
+	negativeGames, err := db.MostNegativeGames(5)
+	if err != nil {
+		log.Printf("Failed to get most negative games: %v", err)
+		httpInternal(w)
+		return
+	}
+	negative := negativeGames.ToUI()
+
+	fmt.Println("### POSITIVE")
+	for _, p := range positive {
+		fmt.Println(p.Name, " ", p.Rating, " ", p.ReleaseDate, " ", p.TotalReviews)
+	}
+
+	fmt.Println("### NEGATIVE")
+	for _, p := range negative {
+		fmt.Println(p.Name, " ", p.Rating, " ", p.ReleaseDate, " ", p.TotalReviews)
 	}
 
 	data := IndexData{
-		Trending:       trendingGames,
-		TopGames:       top,
+		Trending:       trending,
+		Top:            popular,
 		TopGamesIn1Day: mostRevsIn1DayGames,
+		TopPositive:    positive,
+		TopNegative:    negative,
 	}
 
 	var buff bytes.Buffer
@@ -195,36 +181,6 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	if err = rdb.Set(ctx, "index", buff.Bytes(), time.Minute).Err(); err != nil {
 		log.Printf("Failed to save index page to cache: %v", err)
 	}
-}
-
-func daysAgoCount(dates []string) []int {
-	dayCount := make(map[int]int)
-
-	for _, dateStr := range dates {
-		t, err := time.Parse(dateLayout, dateStr)
-		if err != nil {
-			fmt.Println("Error parsing date:", err)
-			continue
-		}
-
-		daysAgo := int(time.Since(t).Hours() / 24)
-
-		dayCount[daysAgo]++
-	}
-
-	maxDaysAgo := 0
-	for daysAgo := range dayCount {
-		if daysAgo > maxDaysAgo {
-			maxDaysAgo = daysAgo
-		}
-	}
-
-	result := make([]int, maxDaysAgo+1)
-	for daysAgo, count := range dayCount {
-		result[daysAgo] = count
-	}
-
-	return result
 }
 
 func faviconHandler(w http.ResponseWriter, r *http.Request) {

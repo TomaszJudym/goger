@@ -16,6 +16,8 @@ const emptyDate = `0001-01-01`
 
 type Reviews []Review
 type Products []Product
+type ProductsRepo []ProductRepo
+type TrendingGames []TrendingGame
 
 func (r Reviews) ToRepo(ts time.Time) []ReviewRepo {
 	ret := make([]ReviewRepo, 0, len(r))
@@ -157,6 +159,25 @@ func (r *ProductRepo) UnmarshalJSON(b []byte) error {
 	*r = ProductRepo(*aux.alias)
 
 	return nil
+}
+
+func (p *ProductsRepo) ToUI() []UIGame {
+	ret := make([]UIGame, 0, len(*p))
+	for _, prod := range *p {
+		ret = append(ret, prod.ToUI())
+	}
+	return ret
+}
+
+func (p *ProductRepo) ToUI() UIGame {
+	return UIGame{
+		ID:           p.ID,
+		Name:         p.Title,
+		Rating:       p.ReviewsRating,
+		ReleaseDate:  p.ReleaseDate,
+		TotalReviews: p.ReviewsCount,
+		Developers:   p.Developers,
+	}
 }
 
 // MapProductToRepo maps the original Product to the simplified ProductRepo
@@ -546,6 +567,50 @@ type TrendingGame struct {
 	ReviewDates   pq.StringArray `db:"review_dates"`
 }
 
+func (tr TrendingGames) ToUI() []UIGame {
+	ret := make([]UIGame, 0, len(tr))
+	for _, game := range tr {
+		ret = append(ret, UIGame{
+			ID:                 strconv.Itoa(game.ID),
+			Name:               game.Title,
+			Rating:             game.ReviewsRating,
+			TotalReviews:       game.TotalReviews,
+			ReviewsPerHoursAgo: daysAgoCount(game.ReviewDates),
+		})
+	}
+	return ret
+}
+
+func daysAgoCount(dates []string) []int {
+	dayCount := make(map[int]int)
+
+	for _, dateStr := range dates {
+		t, err := time.Parse(dateLayout, dateStr)
+		if err != nil {
+			fmt.Println("Error parsing date:", err)
+			continue
+		}
+
+		daysAgo := int(time.Since(t).Hours() / 24)
+
+		dayCount[daysAgo]++
+	}
+
+	maxDaysAgo := 0
+	for daysAgo := range dayCount {
+		if daysAgo > maxDaysAgo {
+			maxDaysAgo = daysAgo
+		}
+	}
+
+	result := make([]int, maxDaysAgo+1)
+	for daysAgo, count := range dayCount {
+		result[daysAgo] = count
+	}
+
+	return result
+}
+
 type GameWithMostReviewsIn1Day struct {
 	Title        string  `db:"title"`
 	ReleaseDate  string  `db:"release_date"`
@@ -555,9 +620,13 @@ type GameWithMostReviewsIn1Day struct {
 }
 
 type UIGame struct {
-	ID           int    `db:"id"`
-	Title        string `db:"title"`
-	ReviewsCount int    `db:"reviews_count"`
+	ID                 string
+	Name               string
+	Rating             int
+	ReleaseDate        string
+	TotalReviews       int
+	ReviewsPerHoursAgo []int
+	Developers         []string
 }
 
 type RunRepo struct {
