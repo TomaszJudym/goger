@@ -27,7 +27,13 @@ type GamesRepo struct {
 	mostNegativeGames          *sqlx.Stmt
 	avgReviewsPerGame          *sqlx.Stmt
 	topLanguages               *sqlx.Stmt
+	topRatingVals              *sqlx.Stmt
+	avgReviewsPerUser          *sqlx.Stmt
+	mostReviewsPerUser         *sqlx.Stmt
 	gamesWithMostReviewsIn1Day *sqlx.Stmt
+	topYearToGamesReleased     *sqlx.Stmt
+	dayWithMostReviews         *sqlx.Stmt
+	gamesPerDeveloper          *sqlx.Stmt
 }
 
 func NewRepo(l *slog.Logger) (*GamesRepo, error) {
@@ -149,7 +155,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	mostNegativeGames, err := db.Preparex(`
 	SELECT id, title, reviews_count, reviews_rating, TO_CHAR(release_date, 'DD-MM-YYYY') AS release_date, developers
 	FROM games
-	WHERE reviews_count > 0
+	WHERE reviews_count > 0 AND reviews_rating > 0
 	ORDER BY reviews_rating ASC, reviews_count DESC
 	LIMIT $1;
 `)
@@ -158,7 +164,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 
 	avgReviewsPerGame, err := db.Preparex(`
-    SELECT AVG(reviews_count) AS average_reviews_per_game FROM games
+    SELECT ROUND(AVG(reviews_count), 2) AS average_reviews_per_game FROM games
 `)
 	if err != nil {
 		return nil, err
@@ -199,6 +205,83 @@ LIMIT $1;
 		return nil, err
 	}
 
+	topRatingVal, err := db.Preparex(`
+SELECT rating_value, COUNT(*) AS count
+FROM reviews
+GROUP BY rating_value
+ORDER BY count DESC
+LIMIT $1;
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	avgReviewsPerUser, err := db.Preparex(`
+SELECT ROUND(AVG(review_count), 2) AS average_reviews_per_user
+FROM (
+    SELECT reviewer_id, COUNT(*) AS review_count
+    FROM reviews
+    GROUP BY reviewer_id
+) AS user_reviews;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
+	mostReviewsPerUser, err := db.Preparex(`
+SELECT COUNT(id) AS review_count
+  FROM reviews
+  GROUP BY reviewer_id
+  ORDER BY review_count DESC
+  LIMIT 1;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
+	topYearToGamesReleased, err := db.Preparex(`
+SELECT EXTRACT(YEAR FROM release_date) AS year, COUNT(*) AS number_of_games_released
+FROM games
+GROUP BY year
+ORDER BY year
+LIMIT $1;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
+	dayWithMostReviews, err := db.Preparex(`
+SELECT 
+    DATE(review_date) AS review_day, 
+    COUNT(*) AS review_count
+FROM 
+    reviews
+GROUP BY 
+    review_day
+ORDER BY 
+    review_count DESC
+LIMIT 1;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
+	gamesPerDeveloper, err := db.Preparex(`
+SELECT 
+    UNNEST(developers) AS developer,
+    COUNT(*) AS games_count
+FROM 
+    games
+GROUP BY 
+    developer
+ORDER BY 
+    games_count DESC
+LIMIT $1;
+		`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GamesRepo{
 		logger:                     l,
 		db:                         gq,
@@ -215,6 +298,12 @@ LIMIT $1;
 		avgReviewsPerGame:          avgReviewsPerGame,
 		gamesWithMostReviewsIn1Day: gamesWithMostReviewsIn1Day,
 		topLanguages:               topLanguages,
+		topRatingVals:              topRatingVal,
+		avgReviewsPerUser:          avgReviewsPerUser,
+		topYearToGamesReleased:     topYearToGamesReleased,
+		mostReviewsPerUser:         mostReviewsPerUser,
+		dayWithMostReviews:         dayWithMostReviews,
+		gamesPerDeveloper:          gamesPerDeveloper,
 	}, nil
 }
 
@@ -293,7 +382,6 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute insert query: %w", err)
 	}
-
 	affectedRows, err := res.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get rows affected by insert: %w", err)
@@ -304,6 +392,7 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 		}
 		return 0, err
 	}
+	r.logger.Info("Added reviews", "count", affectedRows)
 	numNewReviews := int(affectedRows)
 
 	sql, _, err = tx.Update("games").
@@ -551,4 +640,77 @@ func (r *GamesRepo) TopLanguages(limit int) ([]LanguageCount, error) {
 
 	// Return the results
 	return langs, nil
+}
+
+func (r *GamesRepo) TopRatingVals(limit int) ([]RatingVal, error) {
+	rows, err := r.topRatingVals.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query rating vals: %w", err)
+	}
+	defer rows.Close()
+
+	var vals []RatingVal
+	err = sqlx.StructScan(rows, &vals)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan top languages: %w", err)
+	}
+
+	return vals, nil
+}
+
+func (r *GamesRepo) AvgReviewsPerUser() (float64, error) {
+	var avg float64
+	return avg, r.avgReviewsPerUser.Get(&avg)
+}
+
+func (r *GamesRepo) AvgReviewsPerGame() (float64, error) {
+	var avg float64
+	return avg, r.avgReviewsPerGame.Get(&avg)
+}
+
+func (r *GamesRepo) MostReviewsPerUser() (int, error) {
+	var most int
+	return most, r.mostReviewsPerUser.Get(&most)
+}
+
+func (r *GamesRepo) DayWithMostReviews() (time.Time, int, error) {
+	aux := struct {
+		Day   time.Time `db:"review_day"`
+		Count int       `db:"review_count"`
+	}{}
+	err := r.dayWithMostReviews.QueryRowx().StructScan(&aux)
+	return aux.Day, aux.Count, err
+}
+
+func (r *GamesRepo) GamesPerDeveloper(limit int) ([]map[string]int64, error) {
+	aux := []struct {
+		GamesCount int64  `db:"games_count"`
+		Developer  string `db:"developer"`
+	}{}
+	if err := r.gamesPerDeveloper.Select(&aux, limit); err != nil {
+		return nil, fmt.Errorf("failed to select games count per dev: %w", err)
+	}
+
+	gamesCountToDev := make([]map[string]int64, 0, len(aux))
+	for _, v := range aux {
+		gamesCountToDev = append(gamesCountToDev, map[string]int64{v.Developer: v.GamesCount})
+	}
+
+	return gamesCountToDev, nil
+}
+
+func (r *GamesRepo) TopYearToGamesReleased(limit int) ([]GamesReleasedByYear, error) {
+	rows, err := r.topYearToGamesReleased.Query(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query rating vals: %w", err)
+	}
+	defer rows.Close()
+
+	var vals []GamesReleasedByYear
+	err = sqlx.StructScan(rows, &vals)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan top languages: %w", err)
+	}
+
+	return vals, nil
 }

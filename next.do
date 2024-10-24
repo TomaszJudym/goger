@@ -43,15 +43,18 @@ Found on cyberpunk phantom liberty store page.
   -> Turn into postgresql UNLOGGED table
 
 - Make plan what to display finally.
-1. Per game - list all languages
-2. 5 most popular words per language.
-3. Rating per language.
-4. Avg review length per language.
-5. 5 most popular colors in images.
-6. Developer, numbers of games, % of games
-7. % of games per developer
-8. On each game side - chart time to number of reviews
-9. Store thumbnails for games and display them.
+0. Some metric or ticker to tell how many games were updates in
+current run. Or if some game's values changed
+1. 5 most popular words per language.
+2. Rating per language.
+3. Avg review length per language.
+3. 5 most popular colors in images.
+4. Developer, numbers of games, % of games
+5. % of games per developer
+6. On each game side - chart time to number of reviews
+7. Store thumbnails for games and display them.
+8. Change fetching of all this garbage in fronter into fetching
+a single view from pg. At least for index page it should 1 query.
+Instantly cached too.
+9. https://github.com/huntabyte/shadcn-svelte maybe this for UI?
 
-NOW: - finish main page which is showing general statistics
-and only below list of games with most reviews.

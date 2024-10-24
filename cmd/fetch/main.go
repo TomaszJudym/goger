@@ -260,7 +260,7 @@ func (r *reviewer) download(title, gameID string) error {
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("failed to download reviews: %w", err)
 	}
-	l.Info("downloaded", "revsCount", onPage, "took", time.Since(start))
+	l.Debug("downloaded", "revsCount", onPage, "took", time.Since(start))
 
 	return nil
 }

@@ -640,3 +640,13 @@ type LanguageCount struct {
 	Language    string `db:"language"`
 	ReviewCount int    `db:"review_count"`
 }
+
+type RatingVal struct {
+	RatingValue int `db:"rating_value"`
+	Count       int `db:"count"`
+}
+
+type GamesReleasedByYear struct {
+	Year          int `db:"year"`
+	GamesReleased int `db:"number_of_games_released"`
+}

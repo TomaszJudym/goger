@@ -26,7 +26,14 @@ type Repo interface {
 	MostPositiveGames(limit int) (goger.ProductsRepo, error)
 	MostNegativeGames(limit int) (goger.ProductsRepo, error)
 	TopLanguages(limit int) ([]goger.LanguageCount, error)
+	TopRatingVals(limit int) ([]goger.RatingVal, error)
 	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
+	AvgReviewsPerUser() (float64, error)
+	AvgReviewsPerGame() (float64, error)
+	MostReviewsPerUser() (int, error)
+	TopYearToGamesReleased(limit int) ([]goger.GamesReleasedByYear, error)
+	DayWithMostReviews() (time.Time, int, error)
+	GamesPerDeveloper(limit int) ([]map[string]int64, error)
 }
 
 var (
@@ -65,22 +72,20 @@ func main() {
 }
 
 type IndexData struct {
-	Trending       []goger.UIGame
-	Top            []goger.UIGame
-	TopNegative    []goger.UIGame
-	TopPositive    []goger.UIGame
-	TopGamesIn1Day []goger.GameWithMostReviewsIn1Day
-	TopLanguages   []goger.LanguageCount
-}
-
-// TODO: Display on top of page
-type Stats struct {
-	TotalGames        int
-	AvgRatings        float64
-	MostPopularGame   string
-	MostPositiveGame  string
-	MostNegativeGame  string
-	AvgReviewsPerGame float64
+	Trending            []goger.UIGame
+	Top                 []goger.UIGame
+	TopNegative         []goger.UIGame
+	TopPositive         []goger.UIGame
+	TopGamesIn1Day      []goger.GameWithMostReviewsIn1Day
+	TopLanguages        []goger.LanguageCount
+	Ratings             []goger.RatingVal
+	YearToGamesReleased []goger.GamesReleasedByYear
+	AvgReviewsPerUser   float64
+	AvgReviewsPerGame   float64
+	MostReviewsPerUser  int
+	MostReviewsDay      string
+	MostReviewsIn1Day   int
+	GamesPerDeveloper   []map[string]int64
 }
 
 func handlerIndex(w http.ResponseWriter, r *http.Request) {
@@ -116,13 +121,13 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	trending := trendingGames.ToUI()
 
-	games, err := db.MostPopularGames(5)
+	positiveGames, err := db.MostPopularGames(5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
 		httpInternal(w)
 		return
 	}
-	popular := games.ToUI()
+	popular := positiveGames.ToUI()
 
 	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
 	if err != nil {
@@ -131,13 +136,12 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	games, err = db.MostPositiveGames(5)
+	positiveGames, err = db.MostPositiveGames(5)
 	if err != nil {
 		log.Printf("Failed to get most positive games: %v", err)
 		httpInternal(w)
 		return
 	}
-	positive := games.ToUI()
 
 	negativeGames, err := db.MostNegativeGames(5)
 	if err != nil {
@@ -145,21 +149,78 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		httpInternal(w)
 		return
 	}
-	negative := negativeGames.ToUI()
 
 	topLanguages, err := db.TopLanguages(5)
 	if err != nil {
 		log.Printf("Failed to get top languages: %v", err)
 		httpInternal(w)
+		return
+	}
+
+	topRatingVals, err := db.TopRatingVals(5)
+	if err != nil {
+		log.Printf("Failed to get top rating val: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	yearsToGames, err := db.TopYearToGamesReleased(100) // all
+	if err != nil {
+		log.Printf("Failed to get years to games released: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	avgRevsPerUser, err := db.AvgReviewsPerUser()
+	if err != nil {
+		log.Printf("Failed to get avg reviews per user: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	avgRevsPerGame, err := db.AvgReviewsPerGame()
+	if err != nil {
+		log.Printf("Failed to get avg reviews per user: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	mostReviewsPerUser, err := db.MostReviewsPerUser()
+	if err != nil {
+		log.Printf("Failed to get most reviews per user: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	mostReviewsDay, mostReviewsIn1Day, err := db.DayWithMostReviews()
+	if err != nil {
+		log.Printf("Failed to get day with most reviews: %v", err)
+		httpInternal(w)
+		return
+	}
+
+	gamesPerDev, err := db.GamesPerDeveloper(10)
+	if err != nil {
+		log.Printf("Failed to get days per developer: %v", err)
+		httpInternal(w)
+		return
 	}
 
 	data := IndexData{
-		Trending:       trending,
-		Top:            popular,
-		TopGamesIn1Day: mostRevsIn1DayGames,
-		TopPositive:    positive,
-		TopNegative:    negative,
-		TopLanguages:   topLanguages,
+		Trending:            trending,
+		Top:                 popular,
+		TopGamesIn1Day:      mostRevsIn1DayGames,
+		TopPositive:         positiveGames.ToUI(),
+		TopNegative:         negativeGames.ToUI(),
+		TopLanguages:        topLanguages,
+		Ratings:             topRatingVals,
+		YearToGamesReleased: yearsToGames,
+		AvgReviewsPerUser:   avgRevsPerUser,
+		AvgReviewsPerGame:   avgRevsPerGame,
+		MostReviewsPerUser:  mostReviewsPerUser,
+		MostReviewsDay:      mostReviewsDay.Format("2006-01-02"),
+		MostReviewsIn1Day:   mostReviewsIn1Day,
+		GamesPerDeveloper:   gamesPerDev,
 	}
 
 	var buff bytes.Buffer
