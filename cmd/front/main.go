@@ -9,12 +9,16 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 	"github.com/tomaszjudym/goger"
 )
+
+// TODO: env
+const host = `localhost`
 
 type Repo interface {
 	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
@@ -34,6 +38,8 @@ type Repo interface {
 	TopYearToGamesReleased(limit int) ([]goger.GamesReleasedByYear, error)
 	DayWithMostReviews() (time.Time, int, error)
 	GamesPerDeveloper(limit int) ([]map[string]int64, error)
+	Game(title string) (goger.ProductRepo, error)
+	MostCommonLanguages(title string, limit uint) ([]goger.LanguageCount, error)
 }
 
 var (
@@ -65,9 +71,10 @@ func init() {
 func main() {
 	const port = "8080"
 	http.HandleFunc("/", handlerIndex)
+	http.HandleFunc("/game", handlerGame)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/favicon.ico", faviconHandler)
-	log.Printf("Server running on :%s", port)
+	log.Printf("Server running on: %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
@@ -86,6 +93,12 @@ type IndexData struct {
 	MostReviewsDay      string
 	MostReviewsIn1Day   int
 	GamesPerDeveloper   []map[string]int64
+}
+
+type DataGame struct {
+	Title     string
+	Items     [][2]string // key -> vals
+	Languages []goger.LanguageCount
 }
 
 func handlerIndex(w http.ResponseWriter, r *http.Request) {
@@ -236,9 +249,53 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Served games in %v, for IP: %s, URI: %s", time.Since(start), r.RemoteAddr, r.RequestURI)
+	log.Printf("Served games in %v, for IP: %s, URI: %s",
+		time.Since(start), r.RemoteAddr, r.RequestURI)
 	if err = rdb.Set(ctx, "index", buff.Bytes(), time.Minute).Err(); err != nil {
 		log.Printf("Failed to save index page to cache: %v", err)
+	}
+}
+
+func handlerGame(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Query().Get("title")
+	if title == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte("title param missing"))
+		if err != nil {
+			log.Printf("failed to write error response about "+
+				"missing title param: %v", err)
+		}
+		return
+	}
+
+	game, err := db.Game(title)
+	if err != nil {
+		httpInternal(w)
+		log.Printf("failed to get game %s: %v", title, err)
+		return
+	}
+
+	languages, err := db.MostCommonLanguages(title, 5)
+	if err != nil {
+		httpInternal(w)
+		log.Printf("failed to get most common languages: %v", err)
+		return
+	}
+
+	data := DataGame{
+		Title: game.Title,
+		Items: [][2]string{
+			{"Reviews count", strconv.Itoa(game.ReviewsCount)},
+			{"Reviews rating", strconv.Itoa(game.ReviewsRating)},
+			{"Developers", strings.Join(game.Developers, "\n")},
+			{"Publishers", strings.Join(game.Publishers, "\n")},
+			{"Release date", game.ReleaseDate[:10]},
+		},
+		Languages: languages,
+	}
+	tmpl := template.Must(template.ParseFiles("templates/game.html"))
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("failed to execute game template: %v", err)
 	}
 }
 

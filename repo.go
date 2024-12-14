@@ -195,7 +195,7 @@ LIMIT $1;
 	}
 
 	topLanguages, err := db.Preparex(`
-SELECT split_part(language, '-', 2) AS language, COUNT(*) AS review_count
+SELECT language, COUNT(*) AS review_count
 FROM reviews
 GROUP BY language
 ORDER BY review_count DESC
@@ -713,4 +713,31 @@ func (r *GamesRepo) TopYearToGamesReleased(limit int) ([]GamesReleasedByYear, er
 	}
 
 	return vals, nil
+}
+
+func (r *GamesRepo) Game(title string) (ProductRepo, error) {
+	var game ProductRepo
+	_, err := r.db.From("games").Where(goqu.Ex{"title": title}).ScanStruct(&game)
+	return game, err
+}
+
+func (r *GamesRepo) MostCommonLanguages(title string, limit uint) ([]LanguageCount, error) {
+	ds := r.db.From("games").
+		Join(goqu.T("reviews"), goqu.On(goqu.Ex{"games.id": goqu.I("reviews.product_id")})).
+		Select(
+			goqu.I("reviews.language"),
+			goqu.COUNT("reviews.language").As("review_count"),
+		).
+		Where(goqu.Ex{"games.title": title}).
+		GroupBy(goqu.I("reviews.language")).
+		Order(goqu.COUNT("reviews.language").Desc()).
+		Limit(limit)
+
+	var counts []LanguageCount
+	err := ds.ScanStructs(&counts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan array of LanguageCount: %w", err)
+	}
+
+	return counts, nil
 }

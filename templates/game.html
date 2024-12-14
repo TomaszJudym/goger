@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      background-color: #2e2e2e;
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-gap: 20px;
+      padding: 20px;
+    }
+
+    .grid-item {
+      border: 1px solid #ccc;
+      padding: 20px;
+      text-align: center;
+      background-color: #444;
+      color: #fff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>{{.Title}}</h1>
+    <div class="grid-container">
+      {{range .Items}}
+      <div class="grid-item">
+        {{index . 0}}: {{index . 1}}
+      </div>
+      {{end}}
+    </div>
+    <div class="grid-item">
+      {{range .Languages}}
+      {{.}}<br />
+      {{end}}
+    </div>
+  </div>
+</body>
+
+</html>
