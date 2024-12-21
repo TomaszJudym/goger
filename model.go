@@ -6,7 +6,6 @@ import (
 	"log"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -220,13 +219,6 @@ func (p Product) ToRepo(ts time.Time) (ProductRepo, error) {
 	}
 	if p.ReleaseDate == "" {
 		p.ReleaseDate = p.StoreReleaseDate
-	}
-	// Screenshots contain placeholder {formatter} instead of exact URL.
-	// On cyberpunk phantom liberty page it "product_card_v2_mobile_slider_639".
-	// It's working so apply this to placeholder in strings.
-	for i, s := range p.Screenshots {
-		const rep = "product_card_v2_mobile_slider_639"
-		p.Screenshots[i] = strings.Replace(s, "{formatter}", rep, 1)
 	}
 
 	return ProductRepo{

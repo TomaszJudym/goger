@@ -96,9 +96,10 @@ type IndexData struct {
 }
 
 type DataGame struct {
-	Title     string
-	Items     [][2]string // key -> vals
-	Languages []goger.LanguageCount
+	Title       string
+	Items       [][2]string // key -> vals
+	Languages   []goger.LanguageCount
+	Screenshots []string
 }
 
 func handlerIndex(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +292,8 @@ func handlerGame(w http.ResponseWriter, r *http.Request) {
 			{"Publishers", strings.Join(game.Publishers, "\n")},
 			{"Release date", game.ReleaseDate[:10]},
 		},
-		Languages: languages,
+		Languages:   languages,
+		Screenshots: game.Screenshots,
 	}
 	tmpl := template.Must(template.ParseFiles("templates/game.html"))
 	if err := tmpl.Execute(w, data); err != nil {
