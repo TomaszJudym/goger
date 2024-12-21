@@ -37,6 +37,9 @@
       text-align: center;
       background-color: #444;
       color: #fff;
+
+      display: grid;
+      place-items: center;
     }
   </style>
 </head>
@@ -50,11 +53,12 @@
         {{index . 0}}: {{index . 1}}
       </div>
       {{end}}
-    </div>
-    <div class="grid-item">
-      {{range .Languages}}
-      {{.}}<br />
-      {{end}}
+      <div class="grid-item">
+        <p>Top languages in comments</p>
+        {{range $index, $item := .Languages}}
+        {{if $index}}, {{end}}{{.Language}}: {{.ReviewCount}}
+        {{end}}
+      </div>
     </div>
   </div>
 </body>

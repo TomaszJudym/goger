@@ -195,7 +195,7 @@ LIMIT $1;
 	}
 
 	topLanguages, err := db.Preparex(`
-SELECT language, COUNT(*) AS review_count
+SELECT split_part(language, '-', 2) AS language, COUNT(*) AS review_count
 FROM reviews
 GROUP BY language
 ORDER BY review_count DESC
@@ -725,7 +725,7 @@ func (r *GamesRepo) MostCommonLanguages(title string, limit uint) ([]LanguageCou
 	ds := r.db.From("games").
 		Join(goqu.T("reviews"), goqu.On(goqu.Ex{"games.id": goqu.I("reviews.product_id")})).
 		Select(
-			goqu.I("reviews.language"),
+			goqu.L("split_part(language, '-', 2)").As("language"),
 			goqu.COUNT("reviews.language").As("review_count"),
 		).
 		Where(goqu.Ex{"games.title": title}).
