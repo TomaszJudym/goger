@@ -200,7 +200,7 @@
         <tbody>
           {{range .Trending}}
           <tr style="height: 100px; max-height: 100px;">
-            <td>{{.Name}}</td>
+            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
             <td class="change-positive">{{.Rating}}</td>
             <td>
               <canvas id="{{.Name}}" width="200px" height="100px"></canvas>
@@ -255,15 +255,15 @@
           <tr>
             <th>Name</th>
             <th>Rating / 50 this day</th>
-            <th>Release</th>
-            <th>Day</th>
+            <th>Release date</th>
+            <th>Review date</th>
             <th>Reviews</th>
           </tr>
         </thead>
         <tbody>
           {{range .TopGamesIn1Day}}
           <tr>
-            <td>{{.Title}}</td>
+            <td><a href="/game?title={{.Title}}" style="color: #ff69b4;">{{.Title}}</a></td>
             <td>{{.Rating}}</td>
             <td>{{.ReleaseDate}}</td>
             <td>{{.ReviewDate}}</td>
@@ -288,7 +288,7 @@
         <tbody>
           {{range .TopPositive}}
           <tr>
-            <td>{{.Name}}</td>
+            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
             <td>{{.Rating}}</td>
             <td>{{.ReleaseDate}}</td>
             <td>{{.TotalReviews}}</td>
@@ -319,7 +319,7 @@
         <tbody>
           {{range .TopNegative}}
           <tr>
-            <td>{{.Name}}</td>
+            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
             <td>{{.Rating}}</td>
             <td>{{.ReleaseDate}}</td>
             <td>{{.TotalReviews}}</td>
