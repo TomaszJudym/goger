@@ -1,7 +1,6 @@
 package goger
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/guptarohit/asciigraph"
 	"github.com/lib/pq"
-	"github.com/olekukonko/tablewriter"
 )
 
 const emptyDate = `0001-01-01`
@@ -167,31 +165,17 @@ func (r *ProductRepo) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (p *ProductsRepo) ToUI() string {
-	if p == nil {
-		return ""
+func (p ProductsRepo) ToUI() []UIGame {
+	data := make([]UIGame, 0, len(p))
+	for _, product := range p {
+		data = append(data, product.ToUI())
 	}
-
-	data := make([][]string, 0, len(*p))
-	for _, product := range *p {
-		data = append(data, []string{
-			product.Title,
-			product.ReleaseDate,
-			strconv.Itoa(product.ReviewsRating),
-			strconv.Itoa(product.ReviewsCount),
-			strings.Join(product.Developers, " "),
-		})
-	}
-	return newStringTable(
-		[]string{"Title", "Release date", "Rating  / 50", "Reviews", "Devs"},
-		data,
-	)
+	return data
 }
 
-func (p *ProductRepo) ToUI() UIGame {
+func (p ProductRepo) ToUI() UIGame {
 	return UIGame{
-		ID:           p.ID,
-		Name:         p.Title,
+		Title:        p.Title,
 		Rating:       p.ReviewsRating,
 		ReleaseDate:  p.ReleaseDate,
 		TotalReviews: p.ReviewsCount,
@@ -587,57 +571,21 @@ type TrendingGame struct {
 	ReviewDates   pq.StringArray `db:"review_dates"`
 }
 
-func (tr TrendingGames) ToUI() string {
+func (tr TrendingGames) ToUI() []UIGame {
 	if len(tr) == 0 {
-		return ""
+		return nil
 	}
 
-	data := make([][]string, 0, len(tr))
+	ui := make([]UIGame, 0, len(tr))
 	for _, game := range tr {
-		data = append(data, []string{
-			game.Title,
-			strconv.Itoa(game.ReviewsRating),
-			strconv.Itoa(game.TotalReviews),
-			newPopularityASCIIGraph(game),
+		ui = append(ui, UIGame{
+			Title:        game.Title,
+			Rating:       game.ReviewsRating,
+			TotalReviews: game.TotalReviews,
+			Chart:        newPopularityASCIIGraph(game),
 		})
 	}
-	return newStringTable(
-		[]string{"Title", "Rating / 50", "Reviews", "14 days comments"},
-		data,
-	)
-}
-
-func mergeMultiline(left, right string) string {
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-
-	// Find the max width of the left string's lines
-	maxLeftWidth := 0
-	for _, line := range leftLines {
-		if len(line) > maxLeftWidth {
-			maxLeftWidth = len(line)
-		}
-	}
-
-	var result strings.Builder
-	numLines := max(len(leftLines), len(rightLines))
-
-	for i := 0; i < numLines; i++ {
-		var leftPart, rightPart string
-
-		// Get the current line or an empty string if out of bounds
-		if i < len(leftLines) {
-			leftPart = leftLines[i]
-		}
-		if i < len(rightLines) {
-			rightPart = rightLines[i]
-		}
-
-		// Write the left part, padded to the maximum width
-		result.WriteString(fmt.Sprintf("%-*s  %s\n", maxLeftWidth, leftPart, rightPart))
-	}
-
-	return result.String()
+	return ui
 }
 
 type GameWithMostReviewsIn1Day struct {
@@ -648,37 +596,13 @@ type GameWithMostReviewsIn1Day struct {
 	Rating       float64 `db:"rating"`
 }
 
-type GamesWithMostReviewsIn1Day []GameWithMostReviewsIn1Day
-
-func (g GamesWithMostReviewsIn1Day) ToUI() string {
-	if g == nil {
-		return ""
-	}
-
-	data := make([][]string, 0, len(g))
-	for _, game := range g {
-		data = append(data, []string{
-			game.Title,
-			game.ReleaseDate,
-			game.ReviewDate,
-			strconv.Itoa(game.TotalReviews),
-			fmt.Sprintf("%.2f", game.Rating),
-		})
-	}
-	return newStringTable(
-		[]string{"Title", "Release Date", "Review Date", "Total Reviews", "Rating"},
-		data,
-	)
-}
-
 type UIGame struct {
-	ID                   string
-	Name                 string
-	Rating               int
-	ReleaseDate          string
-	TotalReviews         int
-	Developers           []string
-	PopularityASCIIChart string
+	Title        string
+	Rating       int
+	ReleaseDate  string
+	TotalReviews int
+	Developers   []string
+	Chart        string
 }
 
 type RunRepo struct {
@@ -693,101 +617,14 @@ type LanguageCount struct {
 	ReviewCount int    `db:"review_count"`
 }
 
-type LanguagesCount []LanguageCount
-
-func (l LanguagesCount) ToUI() string {
-	if l == nil {
-		return ""
-	}
-
-	data := make([][]string, 0, len(l))
-	for _, count := range l {
-		data = append(data, []string{
-			count.Language,
-			strconv.Itoa(count.ReviewCount),
-		})
-
-	}
-	return newStringTable([]string{"Language", "Reviews"}, data)
-}
-
 type RatingVal struct {
 	RatingValue int `db:"rating_value"`
 	Count       int `db:"count"`
 }
 
-type RatingVals []RatingVal
-
-func (r RatingVals) ToUI() string {
-	if r == nil {
-		return ""
-	}
-
-	data := make([][]string, 0, len(r))
-	for _, rating := range r {
-		data = append(data, []string{
-			strconv.Itoa(rating.RatingValue),
-			strconv.Itoa(rating.Count),
-		})
-
-	}
-	return newStringTable([]string{"Rating", "Count"}, data)
-}
-
 type GamesReleasedByYear struct {
 	Year          int `db:"year"`
 	GamesReleased int `db:"number_of_games_released"`
-}
-
-type GamesReleasedByYears []GamesReleasedByYear
-
-func (r GamesReleasedByYears) ToUI() string {
-	if r == nil {
-		return ""
-	}
-
-	data := make([][]string, 0, len(r))
-	for _, count := range r {
-		data = append(data, []string{
-			strconv.Itoa(count.Year),
-			strconv.Itoa(count.GamesReleased),
-		})
-
-	}
-	return newStringTable([]string{"Year", "Games released"}, data)
-}
-
-type GamesPerDevelopers []map[string]int64
-
-func (g GamesPerDevelopers) ToUI() string {
-	if g == nil {
-		return ""
-	}
-
-	data := make([][]string, 0, len(g))
-	for _, developerMap := range g {
-		for developer, count := range developerMap {
-			data = append(data, []string{
-				developer,
-				strconv.FormatInt(count, 10),
-			})
-		}
-	}
-	return newStringTable([]string{"Developer", "Games Count"}, data)
-}
-
-func newStringTable(headers []string, data [][]string) string {
-	var buff bytes.Buffer
-	table := tablewriter.NewWriter(&buff)
-	table.SetRowLine(true)
-	table.SetBorder(false)
-	table.SetAutoWrapText(false)
-	table.SetReflowDuringAutoWrap(false)
-	table.SetHeader(headers)
-	table.AppendBulk(data)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.Render()
-	return buff.String()
 }
 
 func newPopularityASCIIGraph(game TrendingGame) string {

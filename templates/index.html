@@ -5,13 +5,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GOGer</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 
 <body>
   <div class="middle-container">
     <h1>GOGer</h1>
 
+    <table>
+      <thead>
+        <tr>
+          <th>TITLE</th>
+          <th>RATING / 50</th>
+          <th>REVIEWS</th>
+          <th>14 DAYS COMMENTS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .TrendingGames}}
+        <tr>
+          <td class="title">{{.Title}}</td>
+          <td>{{printf "%.2f" (div .ReviewsRating 50.0)}}</td>
+          <td>{{.TotalReviews}}</td>
+          <td>{{len .ReviewDates}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
     <h4>Trending</h4>
     <div class="content-row">
       <span>{{.Trending}}</span>

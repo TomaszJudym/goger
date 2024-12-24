@@ -16,9 +16,6 @@ import (
 	"github.com/tomaszjudym/goger"
 )
 
-// TODO: env
-const host = `localhost`
-
 type Repo interface {
 	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
@@ -28,17 +25,17 @@ type Repo interface {
 	MostPopularGames(limit int) (goger.ProductsRepo, error)
 	MostPositiveGames(limit int) (goger.ProductsRepo, error)
 	MostNegativeGames(limit int) (goger.ProductsRepo, error)
-	TopLanguages(limit int) (goger.LanguagesCount, error)
-	TopRatingVals(limit int) (goger.RatingVals, error)
-	GamesWithMostReviewsIn1Day(limit int) (goger.GamesWithMostReviewsIn1Day, error)
+	TopLanguages(limit int) ([]goger.LanguageCount, error)
+	TopRatingVals(limit int) ([]goger.RatingVal, error)
+	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
 	AvgReviewsPerUser() (float64, error)
 	AvgReviewsPerGame() (float64, error)
 	MostReviewsPerUser() (int, error)
-	TopYearToGamesReleased(limit int) (goger.GamesReleasedByYears, error)
+	TopYearToGamesReleased(limit int) ([]goger.GamesReleasedByYear, error)
 	DayWithMostReviews() (time.Time, int, error)
-	GamesPerDeveloper(limit int) (goger.GamesPerDevelopers, error)
+	GamesPerDeveloper(limit int) ([][2]string, error)
 	Game(title string) (goger.ProductRepo, error)
-	MostCommonLanguages(title string, limit uint) (goger.LanguagesCount, error)
+	MostCommonLanguages(title string, limit uint) ([]goger.LanguageCount, error)
 }
 
 var (
@@ -77,21 +74,21 @@ func main() {
 }
 
 type IndexData struct {
-	Trending            string
-	TrendingChart       string
-	Top                 string
-	TopNegative         string
-	TopPositive         string
-	TopGamesIn1Day      string
-	TopLanguages        string
-	Ratings             string
-	YearToGamesReleased string
+	Trending            []goger.UIGame
+	TrendingChart       []goger.UIGame
+	Top                 []goger.UIGame
+	TopNegative         []goger.UIGame
+	TopPositive         []goger.UIGame
+	TopGamesIn1Day      []goger.GameWithMostReviewsIn1Day
+	TopLanguages        []goger.LanguageCount
+	Ratings             []goger.RatingVal
+	YearToGamesReleased []goger.GamesReleasedByYear
 	AvgReviewsPerUser   float64
 	AvgReviewsPerGame   float64
 	MostReviewsPerUser  int
 	MostReviewsDay      string
 	MostReviewsIn1Day   int
-	GamesPerDeveloper   string
+	GamesPerDeveloper   [][2]string
 }
 
 type DataGame struct {
@@ -114,15 +111,13 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to get most reviewed games with rev ts: %v", err)
 		httpInternal(w)
 	}
-	trending := trendingGames.ToUI()
 
-	positiveGames, err := db.MostPopularGames(5)
+	popularGames, err := db.MostPopularGames(5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
 		httpInternal(w)
 		return
 	}
-	popular := positiveGames.ToUI()
 
 	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
 	if err != nil {
@@ -131,7 +126,7 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	positiveGames, err = db.MostPositiveGames(5)
+	popularGames, err = db.MostPositiveGames(5)
 	if err != nil {
 		log.Printf("Failed to get most positive games: %v", err)
 		httpInternal(w)
@@ -202,20 +197,20 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := IndexData{
-		Trending:            trending,
-		Top:                 popular,
-		TopGamesIn1Day:      mostRevsIn1DayGames.ToUI(),
-		TopPositive:         positiveGames.ToUI(),
+		Trending:            trendingGames.ToUI(),
+		Top:                 popularGames.ToUI(),
+		TopGamesIn1Day:      mostRevsIn1DayGames,
+		TopPositive:         popularGames.ToUI(),
 		TopNegative:         negativeGames.ToUI(),
-		TopLanguages:        topLanguages.ToUI(),
-		Ratings:             topRatingVals.ToUI(),
-		YearToGamesReleased: yearsToGames.ToUI(),
+		TopLanguages:        topLanguages,
+		Ratings:             topRatingVals,
+		YearToGamesReleased: yearsToGames,
 		AvgReviewsPerUser:   avgRevsPerUser,
 		AvgReviewsPerGame:   avgRevsPerGame,
 		MostReviewsPerUser:  mostReviewsPerUser,
 		MostReviewsDay:      mostReviewsDay.Format("2006-01-02"),
 		MostReviewsIn1Day:   mostReviewsIn1Day,
-		GamesPerDeveloper:   gamesPerDev.ToUI(),
+		GamesPerDeveloper:   gamesPerDev,
 	}
 
 	var buff bytes.Buffer
