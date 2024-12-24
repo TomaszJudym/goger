@@ -244,7 +244,7 @@ SELECT COUNT(id) AS review_count
 SELECT EXTRACT(YEAR FROM release_date) AS year, COUNT(*) AS number_of_games_released
 FROM games
 GROUP BY year
-ORDER BY year
+ORDER BY year DESC
 LIMIT $1;
 		`)
 	if err != nil {

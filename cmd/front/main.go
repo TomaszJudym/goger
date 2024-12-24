@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 	"github.com/tomaszjudym/goger"
 )
@@ -64,13 +66,13 @@ func init() {
 }
 
 func main() {
-	const port = "8080"
-	http.HandleFunc("/", handlerIndex)
-	http.HandleFunc("/game", handlerGame)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	http.HandleFunc("/favicon.ico", faviconHandler)
-	log.Printf("Server running on: %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	e := echo.New()
+	e.GET("/", handlerIndex)
+	e.GET("/games/:title", handlerGame)
+	e.File("favicon.png", "static/favicon.png")
+	e.Static("/static", "static")
+	fmt.Printf("Server running on: %s", ":8080")
+	log.Fatal(e.Start(":8080"))
 }
 
 type IndexData struct {
@@ -98,10 +100,11 @@ type DataGame struct {
 	Screenshots []string
 }
 
-func handlerIndex(w http.ResponseWriter, r *http.Request) {
+func handlerIndex(c echo.Context) error {
 	start := time.Now()
+
 	// Get page parameter from the query string
-	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	page, err := strconv.Atoi(c.QueryParam("page"))
 	if err != nil || page < 1 {
 		page = 1
 	}
@@ -109,91 +112,79 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	trendingGames, err := db.MostReviewedGamesWithRevTs(14*24, 5)
 	if err != nil {
 		log.Printf("Failed to get most reviewed games with rev ts: %v", err)
-		httpInternal(w)
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	popularGames, err := db.MostPopularGames(5)
 	if err != nil {
 		log.Printf("Failed to get trending games: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
 	if err != nil {
 		log.Printf("Failed to games with most reviews in 1 day: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	popularGames, err = db.MostPositiveGames(5)
 	if err != nil {
 		log.Printf("Failed to get most positive games: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	negativeGames, err := db.MostNegativeGames(5)
 	if err != nil {
 		log.Printf("Failed to get most negative games: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	topLanguages, err := db.TopLanguages(5)
 	if err != nil {
 		log.Printf("Failed to get top languages: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	topRatingVals, err := db.TopRatingVals(5)
 	if err != nil {
 		log.Printf("Failed to get top rating val: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	yearsToGames, err := db.TopYearToGamesReleased(100) // all
 	if err != nil {
 		log.Printf("Failed to get years to games released: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	avgRevsPerUser, err := db.AvgReviewsPerUser()
 	if err != nil {
 		log.Printf("Failed to get avg reviews per user: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	avgRevsPerGame, err := db.AvgReviewsPerGame()
 	if err != nil {
 		log.Printf("Failed to get avg reviews per user: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	mostReviewsPerUser, err := db.MostReviewsPerUser()
 	if err != nil {
 		log.Printf("Failed to get most reviews per user: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	mostReviewsDay, mostReviewsIn1Day, err := db.DayWithMostReviews()
 	if err != nil {
 		log.Printf("Failed to get day with most reviews: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	gamesPerDev, err := db.GamesPerDeveloper(10)
 	if err != nil {
 		log.Printf("Failed to get days per developer: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	data := IndexData{
@@ -213,47 +204,40 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 		GamesPerDeveloper:   gamesPerDev,
 	}
 
+	// Use Echo's Render function to return the template
 	var buff bytes.Buffer
 	if err = indexTmpl.Execute(&buff, data); err != nil {
 		log.Printf("Failed to execute template: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
-	if _, err = w.Write(buff.Bytes()); err != nil {
+	// Send the response
+	if _, err = c.Response().Write(buff.Bytes()); err != nil {
 		log.Printf("Failed to write response: %v", err)
-		httpInternal(w)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	log.Printf("Served games in %v, for IP: %s, URI: %s",
-		time.Since(start), r.RemoteAddr, r.RequestURI)
+		time.Since(start), c.Request().RemoteAddr, c.Request().RequestURI)
+	return nil
 }
 
-func handlerGame(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Query().Get("title")
+func handlerGame(c echo.Context) error {
+	title := c.Param("title")
 	if title == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_, err := w.Write([]byte("title param missing"))
-		if err != nil {
-			log.Printf("failed to write error response about "+
-				"missing title param: %v", err)
-		}
-		return
+		return c.JSON(http.StatusBadRequest, "title param missing")
 	}
 
 	game, err := db.Game(title)
 	if err != nil {
-		httpInternal(w)
 		log.Printf("failed to get game %s: %v", title, err)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	languages, err := db.MostCommonLanguages(title, 5)
 	if err != nil {
-		httpInternal(w)
 		log.Printf("failed to get most common languages: %v", err)
-		return
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
 	data := DataGame{
@@ -268,14 +252,20 @@ func handlerGame(w http.ResponseWriter, r *http.Request) {
 		Languages:   languages,
 		Screenshots: game.Screenshots,
 	}
-	tmpl := template.Must(template.ParseFiles("templates/game.html"))
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("failed to execute game template: %v", err)
-	}
-}
 
-func faviconHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/favicon.png")
+	tmpl, err := template.ParseFiles("templates/game.html")
+	if err != nil {
+		log.Printf("failed to parse game template: %v", err)
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+	}
+
+	err = tmpl.Execute(c.Response().Writer, data)
+	if err != nil {
+		log.Printf("failed to execute game template: %v", err)
+		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+	}
+
+	return nil
 }
 
 func httpInternal(w http.ResponseWriter) {

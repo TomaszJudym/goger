@@ -12,6 +12,7 @@
   <div class="middle-container">
     <h1>GOGer</h1>
 
+    <h3>Trending Games</h3>
     <table>
       <thead>
         <tr>
@@ -22,44 +23,40 @@
         </tr>
       </thead>
       <tbody>
-        {{range .TrendingGames}}
+        {{range .Trending}}
         <tr>
-          <td class="title">{{.Title}}</td>
-          <td>{{printf "%.2f" (div .ReviewsRating 50.0)}}</td>
+          <td><a href="/games/{{.Title}}">{{.Title}}</a></td>
+          <td>{{.Rating}}</td>
           <td>{{.TotalReviews}}</td>
-          <td>{{len .ReviewDates}}</td>
+          <td>{{.Chart}}</td>
         </tr>
         {{end}}
       </tbody>
     </table>
-    <h4>Trending</h4>
-    <div class="content-row">
-      <span>{{.Trending}}</span>
-    </div>
-    <h4>Most comments</h4>
-    <div class="content-row">
-      <span>{{.Top}}</span>
-    </div>
-    <h4>Most comments in 1 day</h4>
-    <div class="content-row">
-      <span>{{.TopGamesIn1Day}}</span>
-    </div>
-    <h4>Most positive</h4>
-    <div class="content-row">
-      <span>{{.TopPositive}}</span>
-    </div>
-    <h4>Most negative</h4>
-    <div class="content-row">
-      <span>{{.TopNegative}}</span>
-    </div>
-    <div class="content-row">
-      <span>{{.TopLanguages}}</span>
-    </div>
-    <div class="content-row">
-      <span>{{.Ratings}}</span>
-    </div>
 
-    <h3>Stats</h3>
+    <h3>Top Games</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>TITLE</th>
+          <th>RATING / 50</th>
+          <th>REVIEWS</th>
+          <th>14 DAYS COMMENTS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Top}}
+        <tr>
+          <td><a href="/games/{{.Title}}">{{.Title}}</a></td>
+          <td>{{.Rating}}</td>
+          <td>{{.TotalReviews}}</td>
+          <td>{{.Chart}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+
+    <h3>Statistics</h3>
     <div class="grid-container">
       <div class="grid-item">
         <span class="key">Avg Reviews/User:</span>
@@ -82,9 +79,62 @@
         <span class="value">{{.MostReviewsIn1Day}}</span>
       </div>
     </div>
-    <h3>Games Per Developer</h3>
-    <div class="content-row">
-      <span>{{.GamesPerDeveloper}}</span>
+
+    <h3>Charts</h3>
+    <div class="charts-section">
+      <h4>Top Languages</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Language</th>
+            <th>Review Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .TopLanguages}}
+          <tr>
+            <td>{{.Language}}</td>
+            <td>{{.ReviewCount}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <h4>Ratings Distribution</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Rating</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Ratings}}
+          <tr>
+            <td>{{.RatingValue}}</td>
+            <td>{{.Count}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <h4>Games Released by Year</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th>Games Released</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .YearToGamesReleased}}
+          <tr>
+            <td>{{.Year}}</td>
+            <td>{{.GamesReleased}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
     </div>
 
     <div class="footer">
