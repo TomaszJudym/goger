@@ -16,5 +16,8 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/guptarohit/asciigraph v0.7.3 // indirect
+	github.com/mattn/go-runewidth v0.0.9 // indirect
+	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )

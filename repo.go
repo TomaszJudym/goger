@@ -605,7 +605,7 @@ func (r *GamesRepo) MostPopularGames(limit int) (ProductsRepo, error) {
 	return games, nil
 }
 
-func (r *GamesRepo) GamesWithMostReviewsIn1Day(limit int) ([]GameWithMostReviewsIn1Day, error) {
+func (r *GamesRepo) GamesWithMostReviewsIn1Day(limit int) (GamesWithMostReviewsIn1Day, error) {
 	rows, err := r.gamesWithMostReviewsIn1Day.Query(limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exec games with most reviews in 1 day: %w", err)
@@ -621,7 +621,7 @@ func (r *GamesRepo) GamesWithMostReviewsIn1Day(limit int) ([]GameWithMostReviews
 	return games, nil
 }
 
-func (r *GamesRepo) TopLanguages(limit int) ([]LanguageCount, error) {
+func (r *GamesRepo) TopLanguages(limit int) (LanguagesCount, error) {
 	// Prepare the query
 	rows, err := r.topLanguages.Query(limit)
 	if err != nil {
@@ -642,7 +642,7 @@ func (r *GamesRepo) TopLanguages(limit int) ([]LanguageCount, error) {
 	return langs, nil
 }
 
-func (r *GamesRepo) TopRatingVals(limit int) ([]RatingVal, error) {
+func (r *GamesRepo) TopRatingVals(limit int) (RatingVals, error) {
 	rows, err := r.topRatingVals.Query(limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query rating vals: %w", err)
@@ -682,7 +682,7 @@ func (r *GamesRepo) DayWithMostReviews() (time.Time, int, error) {
 	return aux.Day, aux.Count, err
 }
 
-func (r *GamesRepo) GamesPerDeveloper(limit int) ([]map[string]int64, error) {
+func (r *GamesRepo) GamesPerDeveloper(limit int) (GamesPerDevelopers, error) {
 	aux := []struct {
 		GamesCount int64  `db:"games_count"`
 		Developer  string `db:"developer"`
@@ -691,7 +691,7 @@ func (r *GamesRepo) GamesPerDeveloper(limit int) ([]map[string]int64, error) {
 		return nil, fmt.Errorf("failed to select games count per dev: %w", err)
 	}
 
-	gamesCountToDev := make([]map[string]int64, 0, len(aux))
+	gamesCountToDev := make(GamesPerDevelopers, 0, len(aux))
 	for _, v := range aux {
 		gamesCountToDev = append(gamesCountToDev, map[string]int64{v.Developer: v.GamesCount})
 	}
@@ -699,7 +699,7 @@ func (r *GamesRepo) GamesPerDeveloper(limit int) ([]map[string]int64, error) {
 	return gamesCountToDev, nil
 }
 
-func (r *GamesRepo) TopYearToGamesReleased(limit int) ([]GamesReleasedByYear, error) {
+func (r *GamesRepo) TopYearToGamesReleased(limit int) (GamesReleasedByYears, error) {
 	rows, err := r.topYearToGamesReleased.Query(limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query rating vals: %w", err)
@@ -721,7 +721,7 @@ func (r *GamesRepo) Game(title string) (ProductRepo, error) {
 	return game, err
 }
 
-func (r *GamesRepo) MostCommonLanguages(title string, limit uint) ([]LanguageCount, error) {
+func (r *GamesRepo) MostCommonLanguages(title string, limit uint) (LanguagesCount, error) {
 	ds := r.db.From("games").
 		Join(goqu.T("reviews"), goqu.On(goqu.Ex{"games.id": goqu.I("reviews.product_id")})).
 		Select(

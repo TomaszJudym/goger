@@ -4,403 +4,136 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Goger</title>
+  <title>GOGer</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: Arial, sans-serif;
-    }
-
     body {
-      background-color: #2e2e2e;
-      color: #ffffff;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      margin: 0;
       display: flex;
-      flex-direction: column;
-      align-items: center;
       justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #f9f9f9;
     }
 
-    h1 {
-      text-align: center;
-    }
-
-    h2 {
-      margin: 20px 0;
-      border-bottom: 1px solid #444;
-      padding-bottom: 10px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th,
-    td {
-      padding: 10px;
+    .middle-container {
       text-align: left;
+      width: 100%;
+      max-width: 1200px;
+      padding: 0 20px;
     }
 
-    th {
-      background-color: #444;
+    h1, h3, h4 {
+      text-align: center;
     }
 
-    tr:nth-child(even) {
-      background-color: #3a3a3a;
-    }
-
-    tr:hover {
-      background-color: #5a5a5a;
-    }
-
-    .change-positive {
-      color: #ff69b4;
-    }
-
-    .chart-container {
+    .content-row {
       display: flex;
       justify-content: center;
-      align-items: center;
-    }
-
-    .footer {
-      margin: 40px 0;
-      text-align: center;
-      color: #aaa;
-    }
-
-    .table tbody tr {
-      height: 50px;
-      max-height: 50px;
-    }
-
-    .table tbody tr:nth-child(3) {
-      height: 100px;
-      max-height: 100px;
-    }
-
-    .table {
-      table-layout: fixed;
-    }
-
-    .table th,
-    .table td {
-      width: 25%;
+      flex-wrap: wrap;
+      gap: 20px;
     }
 
     .grid-container {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-gap: 20px;
-      padding: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-start;
+      width: 100%;
     }
 
     .grid-item {
       border: 1px solid #ccc;
-      padding: 20px;
-      text-align: center;
-      background-color: #f4f4f4;
-    }
-
-    .adjusting-grid-item {
-      border: 1px solid #ccc;
-      padding: 5px;
-      text-align: center;
-      background-color: #f4f4f4;
-      /* center */
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-    }
-
-    .adjusting-grid-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 10px;
+      border-radius: 5px;
       padding: 10px;
-      width: 100%;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      width: 200px;
     }
 
-    .language-item {
-      margin: 10px 0;
-      font-size: 16px;
+    .key {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .value {
+      color: #555;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      color: #888;
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script>
-    function renderChart(chartId, chartData) {
-      const ctx = document.getElementById(chartId).getContext('2d');
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: Array.from({length: 14}, (_, i) => {
-            const msPerDay = 1000 * 60 * 60 * 24;
-            const daysAgo = Math.floor(i / 2);
-            const now = Date.now() - (daysAgo * msPerDay);
-            const date = new Date(now);
-            return `${date.getDate()} ${date.toLocaleString('default', {month: 'long'})}`;
-          }).reverse(),
-          datasets: [{
-            data: chartData,
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            borderColor: 'rgba(255, 99, 132, 1)',
-            borderWidth: 0,
-          }]
-        },
-        options: {
-          plugins: {
-            legend: {
-              display: false
-            },
-            tooltip: {
-              displayColors: false
-            }
-          },
-          scales: {
-            x: {
-              display: false,
-              ticks: {
-                display: false
-              }
-            },
-            y: {
-              display: false,
-              beginAtZero: true
-            }
-          }
-        }
-      });
-    }
-  </script>
 </head>
 
 <body>
-  <div class="container">
+  <div class="middle-container">
     <h1>GOGer</h1>
-    <div>
-      <h2>Trending</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Rating / 50</th>
-            <th>Last 14 Days</th>
-            <th>Total reviews</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Trending}}
-          <tr style="height: 100px; max-height: 100px;">
-            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
-            <td class="change-positive">{{.Rating}}</td>
-            <td>
-              <canvas id="{{.Name}}" width="200px" height="100px"></canvas>
-            </td>
-            <script>
-              renderChart('{{.Name}}', "{{.ReviewsPerHoursAgo}}");
-            </script>
-            <td>{{.TotalReviews}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+
+    <h4>Trending</h4>
+    <div class="content-row">
+      <span>{{.Trending}}</span>
     </div>
-    <div>
-      <h2>Most reviews</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            Consider this: https://github.com/guptarohit/asciigraph
-            And this for charts: https://github.com/olekukonko/tablewriter
-            Seems much cooler than this shit with JS
-            <th>Name</th>
-            <th>Rating / 50</th>
-            <th>Release</th>
-            <th>Total reviews</th>
-            <th>Developers</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Top}}
-          <tr>
-            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
-            <td>{{.Rating}}</td>
-            <td>{{.ReleaseDate}}</td>
-            <td>{{.TotalReviews}}</td>
-            <td>
-              {{$developers := .Developers}}
-              {{ range $index, $element := .Developers}}
-              {{if $index}},{{end}}
-              {{$element}}
-              {{end}}
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+    <h4>Most comments</h4>
+    <div class="content-row">
+      <span>{{.Top}}</span>
     </div>
-    <div>
-      <h2>Most reviews in 1 day</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Rating / 50 this day</th>
-            <th>Release date</th>
-            <th>Review date</th>
-            <th>Reviews</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .TopGamesIn1Day}}
-          <tr>
-            <td><a href="/game?title={{.Title}}" style="color: #ff69b4;">{{.Title}}</a></td>
-            <td>{{.Rating}}</td>
-            <td>{{.ReleaseDate}}</td>
-            <td>{{.ReviewDate}}</td>
-            <td>{{.TotalReviews}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+    <h4>Most comments in 1 day</h4>
+    <div class="content-row">
+      <span>{{.TopGamesIn1Day}}</span>
     </div>
-    <div>
-      <h2>Most positive</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Rating / 50</th>
-            <th>Release</th>
-            <th>Total reviews</th>
-            <th>Developers</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .TopPositive}}
-          <tr>
-            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
-            <td>{{.Rating}}</td>
-            <td>{{.ReleaseDate}}</td>
-            <td>{{.TotalReviews}}</td>
-            <td>
-              {{$developers := .Developers}}
-              {{ range $index, $element := .Developers}}
-              {{if $index}},{{end}}
-              {{$element}}
-              {{end}}
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+    <h4>Most positive</h4>
+    <div class="content-row">
+      <span>{{.TopPositive}}</span>
     </div>
-    <div>
-      <h2>Most negative</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Rating / 50</th>
-            <th>Release</th>
-            <th>Reviews</th>
-            <th>Developers</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .TopNegative}}
-          <tr>
-            <td><a href="/game?title={{.Name}}" style="color: #ff69b4;">{{.Name}}</a></td>
-            <td>{{.Rating}}</td>
-            <td>{{.ReleaseDate}}</td>
-            <td>{{.TotalReviews}}</td>
-            <td>
-              {{$developers := .Developers}}
-              {{ range $index, $element := .Developers}}
-              {{if $index}},{{end}}
-              {{$element}}
-              {{end}}
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+    <h4>Most negative</h4>
+    <div class="content-row">
+      <span>{{.TopNegative}}</span>
     </div>
+    <div class="content-row">
+      <span>{{.TopLanguages}}</span>
+    </div>
+    <div class="content-row">
+      <span>{{.Ratings}}</span>
+    </div>
+
+    <h3>Stats</h3>
     <div class="grid-container">
-      <!-- Column 1 -->
       <div class="grid-item">
-        <h2>Top languages in reviews</h2>
-        {{range .TopLanguages}}
-        <div class="language-item">
-          <h3><strong>{{.Language}}</strong>: {{.ReviewCount}}</h3>
-        </div>
-        {{end}}
+        <span class="key">Avg Reviews/User:</span>
+        <span class="value">{{.AvgReviewsPerUser}}</span>
       </div>
       <div class="grid-item">
-        <h2>Rating counts</h2>
-        {{range .Ratings}}
-        <div class="language-item">
-          <h3><strong>{{.RatingValue}}</strong>: {{.Count}}</h3>
-        </div>
-        {{end}}
-      </div>
-      <!-- Column 2 -->
-      <div class="grid-item">
-        <h2>Average reviews per user</h2>
-        <h3>
-          <font size="+15">{{.AvgReviewsPerUser}}</font>
-        </h3>
+        <span class="key">Avg Reviews/Game:</span>
+        <span class="value">{{.AvgReviewsPerGame}}</span>
       </div>
       <div class="grid-item">
-        <h2>Average reviews per game</h2>
-        <h3>
-          <font size="+15">{{.AvgReviewsPerGame}}</font>
-        </h3>
-      </div>
-      <!-- Column 3 -->
-      <div class="grid-item">
-        <h2>Most reviews for user</h2>
-        <h3>
-          <font size="+15">{{.MostReviewsPerUser}}</font>
-        </h3>
+        <span class="key">Most Reviews/User:</span>
+        <span class="value">{{.MostReviewsPerUser}}</span>
       </div>
       <div class="grid-item">
-        <h2>Day with most reviews</h2>
-        <h3>
-          <font size="+1">{{.MostReviewsDay}}: {{.MostReviewsIn1Day}}</font>
-        </h3>
+        <span class="key">Most Reviews Day:</span>
+        <span class="value">{{.MostReviewsDay}}</span>
+      </div>
+      <div class="grid-item">
+        <span class="key">Most Reviews in 1 Day:</span>
+        <span class="value">{{.MostReviewsIn1Day}}</span>
       </div>
     </div>
-    <h3>Years to released games</h3>
-    <div class="adjusting-grid-container">
-      {{range .YearToGamesReleased}}
-      <div class="adjusting-grid-item">
-        {{.Year}}: {{.GamesReleased}}
-      </div>
-      {{end}}
+    <h3>Games Per Developer</h3>
+    <div class="content-row">
+      <span>{{.GamesPerDeveloper}}</span>
     </div>
-    <h3>Top 10 devs</h3>
-    <div class="adjusting-grid-container">
-      {{range .GamesPerDeveloper}}
-      <div class="adjusting-grid-item">
-        <!-- Should be just entry in map -->
-        {{range $key, $value := .}}
-        {{$key}}: {{$value}}
-        {{end}}
-      </div>
-      {{end}}
-    </div>
+
     <div class="footer">
-      An ongoing analysis of GOG's games and reviews.
+      Some GOG's games and reviews stats.
     </div>
   </div>
 </body>

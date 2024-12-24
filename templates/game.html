@@ -104,28 +104,5 @@
       {{end}}
     </div>
   </div>
-  <div id="fullscreenContainer" class="fullscreen-container">
-    <img id="fullscreenImage" class="fullscreen" />
-  </div>
 </body>
-
-<script>
-  const images = document.querySelectorAll('.clickable-image');
-  const fullscreenImage = document.getElementById('fullscreenImage');
-  const fullscreenContainer = document.getElementById('fullscreenContainer');
-
-  // For each image, add a click event to open it in fullscreen
-  images.forEach(image => {
-    image.addEventListener('click', () => {
-      fullscreenImage.src = image.src;
-      fullscreenContainer.style.display = 'flex';
-    });
-  });
-
-  // Close the fullscreen mode when the background is clicked
-  fullscreenContainer.addEventListener('click', () => {
-    fullscreenContainer.style.display = 'none';
-  });
-</script>
-
 </html>

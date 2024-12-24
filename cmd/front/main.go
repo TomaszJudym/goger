@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"html/template"
 	"log"
 	"log/slog"
@@ -29,17 +28,17 @@ type Repo interface {
 	MostPopularGames(limit int) (goger.ProductsRepo, error)
 	MostPositiveGames(limit int) (goger.ProductsRepo, error)
 	MostNegativeGames(limit int) (goger.ProductsRepo, error)
-	TopLanguages(limit int) ([]goger.LanguageCount, error)
-	TopRatingVals(limit int) ([]goger.RatingVal, error)
-	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
+	TopLanguages(limit int) (goger.LanguagesCount, error)
+	TopRatingVals(limit int) (goger.RatingVals, error)
+	GamesWithMostReviewsIn1Day(limit int) (goger.GamesWithMostReviewsIn1Day, error)
 	AvgReviewsPerUser() (float64, error)
 	AvgReviewsPerGame() (float64, error)
 	MostReviewsPerUser() (int, error)
-	TopYearToGamesReleased(limit int) ([]goger.GamesReleasedByYear, error)
+	TopYearToGamesReleased(limit int) (goger.GamesReleasedByYears, error)
 	DayWithMostReviews() (time.Time, int, error)
-	GamesPerDeveloper(limit int) ([]map[string]int64, error)
+	GamesPerDeveloper(limit int) (goger.GamesPerDevelopers, error)
 	Game(title string) (goger.ProductRepo, error)
-	MostCommonLanguages(title string, limit uint) ([]goger.LanguageCount, error)
+	MostCommonLanguages(title string, limit uint) (goger.LanguagesCount, error)
 }
 
 var (
@@ -65,7 +64,6 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to parse index template: %v", err)
 	}
-
 }
 
 func main() {
@@ -79,20 +77,21 @@ func main() {
 }
 
 type IndexData struct {
-	Trending            []goger.UIGame
-	Top                 []goger.UIGame
-	TopNegative         []goger.UIGame
-	TopPositive         []goger.UIGame
-	TopGamesIn1Day      []goger.GameWithMostReviewsIn1Day
-	TopLanguages        []goger.LanguageCount
-	Ratings             []goger.RatingVal
-	YearToGamesReleased []goger.GamesReleasedByYear
+	Trending            string
+	TrendingChart       string
+	Top                 string
+	TopNegative         string
+	TopPositive         string
+	TopGamesIn1Day      string
+	TopLanguages        string
+	Ratings             string
+	YearToGamesReleased string
 	AvgReviewsPerUser   float64
 	AvgReviewsPerGame   float64
 	MostReviewsPerUser  int
 	MostReviewsDay      string
 	MostReviewsIn1Day   int
-	GamesPerDeveloper   []map[string]int64
+	GamesPerDeveloper   string
 }
 
 type DataGame struct {
@@ -108,24 +107,6 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
 		page = 1
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	// Check in redis cache for recent response of main page
-
-	b, err := rdb.Get(context.Background(), "index").Bytes()
-	if err == nil {
-		if _, err = w.Write(b); err != nil {
-			log.Printf("Failed to write to response after cache hit: %v", err)
-			httpInternal(w)
-		}
-		// Refresh TTL
-		if _, err = rdb.Expire(ctx, "index", time.Minute).Result(); err != nil {
-			log.Printf("Failed to refresh cache ttl: %v", err)
-			httpInternal(w)
-		}
-		return
 	}
 
 	trendingGames, err := db.MostReviewedGamesWithRevTs(14*24, 5)
@@ -223,18 +204,18 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 	data := IndexData{
 		Trending:            trending,
 		Top:                 popular,
-		TopGamesIn1Day:      mostRevsIn1DayGames,
+		TopGamesIn1Day:      mostRevsIn1DayGames.ToUI(),
 		TopPositive:         positiveGames.ToUI(),
 		TopNegative:         negativeGames.ToUI(),
-		TopLanguages:        topLanguages,
-		Ratings:             topRatingVals,
-		YearToGamesReleased: yearsToGames,
+		TopLanguages:        topLanguages.ToUI(),
+		Ratings:             topRatingVals.ToUI(),
+		YearToGamesReleased: yearsToGames.ToUI(),
 		AvgReviewsPerUser:   avgRevsPerUser,
 		AvgReviewsPerGame:   avgRevsPerGame,
 		MostReviewsPerUser:  mostReviewsPerUser,
 		MostReviewsDay:      mostReviewsDay.Format("2006-01-02"),
 		MostReviewsIn1Day:   mostReviewsIn1Day,
-		GamesPerDeveloper:   gamesPerDev,
+		GamesPerDeveloper:   gamesPerDev.ToUI(),
 	}
 
 	var buff bytes.Buffer
@@ -252,9 +233,6 @@ func handlerIndex(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Served games in %v, for IP: %s, URI: %s",
 		time.Since(start), r.RemoteAddr, r.RequestURI)
-	if err = rdb.Set(ctx, "index", buff.Bytes(), time.Minute).Err(); err != nil {
-		log.Printf("Failed to save index page to cache: %v", err)
-	}
 }
 
 func handlerGame(w http.ResponseWriter, r *http.Request) {
