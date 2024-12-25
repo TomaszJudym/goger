@@ -35,6 +35,7 @@ type GamesRepo struct {
 	topYearToGamesReleased     *sqlx.Stmt
 	dayWithMostReviews         *sqlx.Stmt
 	gamesPerDeveloper          *sqlx.Stmt
+	reviewStats                *sqlx.Stmt
 }
 
 func NewRepo(l *slog.Logger) (*GamesRepo, error) {
@@ -76,14 +77,20 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 		return nil, err
 	}
 	reviewsByGame, err := db.Preparex(`
-		SELECT id, product_id, rating_value, title, description, language,
-			reviewer_username, counters_games, counters_reviews, labels, downvotes,
-			upvotes, review_date, creation_date, internal_update_date
-		FROM reviews
-		WHERE product_id = $1
-		ORDER BY review_date DESC
+		SELECT r.id, r.product_id, r.rating_value, r.title, r.description, r.language,
+		       r.reviewer_username, r.counters_games, r.counters_reviews, r.labels, 
+		       r.downvotes, r.upvotes, r.review_date, r.creation_date, r.internal_update_date
+		FROM reviews r
+		WHERE r.product_id = (
+		    SELECT g.id
+		    FROM games g
+		    WHERE g.title = $1
+		    LIMIT 1
+		)
+		ORDER BY r.review_date DESC
 		OFFSET $2
-		LIMIT $3`)
+		LIMIT $3
+`)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +290,87 @@ LIMIT $1;
 		return nil, err
 	}
 
+	reviewStats, err := db.Preparex(`
+		WITH review_data AS (
+    SELECT
+        r.reviewer_username,
+        r.rating_value,
+        r.description,
+        r.review_date,
+        r.language,
+        r.upvotes,
+        r.downvotes,
+        r.labels,
+        r.product_id
+    FROM reviews r
+    INNER JOIN games g ON r.product_id = g.id
+    WHERE g.title = $1
+),
+review_length AS (
+    SELECT
+        reviewer_username,
+        LENGTH(description) AS review_length
+    FROM review_data
+),
+ratings_per_user AS (
+    SELECT
+        reviewer_username,
+        AVG(rating_value) AS avg_rating
+    FROM review_data
+    GROUP BY reviewer_username
+),
+upvote_downvote_ratio AS (
+    SELECT
+        product_id,
+        SUM(upvotes) AS total_upvotes,
+        SUM(downvotes) AS total_downvotes
+    FROM review_data
+    GROUP BY product_id
+),
+verified_reviews AS (
+    SELECT
+        product_id,
+        COUNT(DISTINCT r.reviewer_username) AS verified_reviews_count  -- Use DISTINCT on reviewer_username instead of r.id
+    FROM review_data r
+    WHERE 'verified_owner' = ANY(r.labels)
+    GROUP BY product_id
+),
+unverified_reviews AS (
+    SELECT
+        product_id,
+        COUNT(DISTINCT r.reviewer_username) AS unverified_reviews_count  -- Use DISTINCT on reviewer_username instead of r.id
+    FROM review_data r
+    WHERE 'verified_owner' <> ANY(r.labels)
+    GROUP BY product_id
+)
+SELECT 
+    AVG(review_length) AS avg_review_length,
+    AVG(avg_rating) AS avg_rating_per_user,
+    SUM(total_upvotes) / NULLIF(SUM(total_downvotes), 0) AS upvote_downvote_ratio,
+    COALESCE(g.reviews_count, 0) AS total_reviews,  -- Use COALESCE to handle NULL values in reviews_count
+    COALESCE(SUM(verified_reviews_count), 0) AS verified_reviews,
+    COALESCE(SUM(unverified_reviews_count), 0) AS unverified_reviews
+FROM 
+    review_data
+LEFT JOIN 
+    review_length ON review_length.reviewer_username = review_data.reviewer_username
+LEFT JOIN 
+    ratings_per_user ON ratings_per_user.reviewer_username = review_data.reviewer_username
+LEFT JOIN 
+    upvote_downvote_ratio ON upvote_downvote_ratio.product_id = review_data.product_id
+LEFT JOIN 
+    verified_reviews ON verified_reviews.product_id = review_data.product_id
+LEFT JOIN 
+    unverified_reviews ON unverified_reviews.product_id = review_data.product_id
+INNER JOIN 
+    games g ON g.id = review_data.product_id
+GROUP BY 
+    g.id;
+`)
+	if err != nil {
+		return nil, err
+	}
+
 	return &GamesRepo{
 		logger:                     l,
 		db:                         gq,
@@ -305,6 +393,7 @@ LIMIT $1;
 		mostReviewsPerUser:         mostReviewsPerUser,
 		dayWithMostReviews:         dayWithMostReviews,
 		gamesPerDeveloper:          gamesPerDeveloper,
+		reviewStats:                reviewStats,
 	}, nil
 }
 
@@ -489,16 +578,17 @@ func (r *GamesRepo) MostReviewedGamesWithRevTs(hoursAgo, limit int) (TrendingGam
 	return games, nil
 }
 
-func (r *GamesRepo) ReviewsForGame(productID, offset, limit int) (RepoReviews, error) {
-	rows, err := r.reviewsByGame.Queryx(productID, offset, limit)
+func (r *GamesRepo) ReviewsForGame(title string, offset, limit int) (RepoReviews, error) {
+	rows, err := r.reviewsByGame.Queryx(title, offset, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query reviews for product ID %d "+
+		return nil, fmt.Errorf("failed to query reviews for title %s "+
 			"with offset: %d and limit: %d: %w",
-			productID, offset, limit, err)
+			title, offset, limit, err)
 	}
 	defer rows.Close()
 
-	reviews := make([]ReviewRepo, 0, limit)
+	var reviews []ReviewRepo
+
 	for rows.Next() {
 		var review ReviewRepo
 		if err := rows.StructScan(&review); err != nil {
@@ -506,6 +596,11 @@ func (r *GamesRepo) ReviewsForGame(productID, offset, limit int) (RepoReviews, e
 		}
 		reviews = append(reviews, review)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error occurred while iterating over reviews: %w", err)
+	}
+
 	return reviews, nil
 }
 
@@ -737,4 +832,19 @@ func (r *GamesRepo) MostCommonLanguages(title string, limit uint) ([]LanguageCou
 	}
 
 	return counts, nil
+}
+
+type ReviewStats struct {
+	AvgReviewLength     float64 `db:"avg_review_length"`
+	AvgRatingPerUser    float64 `db:"avg_rating_per_user"`
+	UpvoteDownvoteRatio float64 `db:"upvote_downvote_ratio"`
+	TotalReviews        int     `db:"total_reviews"`
+	VerifiedReviews     int     `db:"verified_reviews"`
+	UnverifiedReviews   int     `db:"unverified_reviews"`
+}
+
+func (r *GamesRepo) ReviewsStats(title string) (ReviewStats, error) {
+	var stats ReviewStats
+	err := r.reviewStats.Get(&stats, title)
+	return stats, err
 }

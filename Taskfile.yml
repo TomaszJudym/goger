@@ -17,3 +17,6 @@ tasks:
   kill:
     cmds:
       - docker compose down --remove-orphans --volumes
+  restart:
+    cmds:
+      - docker compose up --build --detach {{.CLI_ARGS}}

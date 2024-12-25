@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -19,7 +20,7 @@ import (
 )
 
 type Repo interface {
-	ReviewsForGame(gameID, offset, limit int) (goger.RepoReviews, error)
+	ReviewsForGame(title string, offset, limit int) (goger.RepoReviews, error)
 	CountGames() (int, error)
 	GameReviewsCount(gameID string) (int, error)
 	MostReviewedGamesWithRevTs(hours, limit int) (goger.TrendingGames, error)
@@ -38,6 +39,7 @@ type Repo interface {
 	GamesPerDeveloper(limit int) ([][2]string, error)
 	Game(title string) (goger.ProductRepo, error)
 	MostCommonLanguages(title string, limit uint) ([]goger.LanguageCount, error)
+	ReviewsStats(title string) (goger.ReviewStats, error)
 }
 
 var (
@@ -69,6 +71,7 @@ func main() {
 	e := echo.New()
 	e.GET("/", handlerIndex)
 	e.GET("/games/:title", handlerGame)
+	e.GET("/reviews/:title", handlerReviews)
 	e.File("favicon.png", "static/favicon.png")
 	e.Static("/static", "static")
 	fmt.Printf("Server running on: %s", ":8080")
@@ -268,6 +271,29 @@ func handlerGame(c echo.Context) error {
 	return nil
 }
 
-func httpInternal(w http.ResponseWriter) {
-	http.Error(w, "Internal error", http.StatusInternalServerError)
+func handlerReviews(c echo.Context) error {
+	title := c.Param("title")
+	if title == "" {
+		return c.JSON(http.StatusBadRequest, "title param missing")
+	}
+
+	stats, err := db.ReviewsStats(title)
+	if err != nil {
+		return internal(c, "failed to get review stats: %w", err)
+	}
+
+	marshalled, err := json.MarshalIndent(stats, " ", "\t")
+	if err != nil {
+		return internal(c, "xD1")
+	}
+	_, err = c.Response().Write(marshalled)
+	if err != nil {
+		return internal(c, "xD2")
+	}
+	return nil
+}
+
+func internal(c echo.Context, msg string, args ...any) error {
+	log.Printf(msg, args...)
+	return c.JSON(http.StatusBadRequest, "internal error")
 }
