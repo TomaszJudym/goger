@@ -95,8 +95,8 @@ CREATE TABLE IF NOT EXISTS run (
 );
 
 CREATE TABLE IF NOT EXISTS language_codes_to_names (
-    language_code VARCHAR(10) PRIMARY KEY,
-    language_name VARCHAR(255) NOT NULL
+    code VARCHAR(10) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
 );
 
 INSERT INTO language_codes_to_names (code, name) VALUES

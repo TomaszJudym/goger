@@ -243,6 +243,9 @@ func handlerGame(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
 	}
 
+	if len(game.ReleaseDate) > 9 {
+		game.ReleaseDate = game.ReleaseDate[:10]
+	}
 	data := DataGame{
 		Title: game.Title,
 		Items: [][2]string{
@@ -250,7 +253,7 @@ func handlerGame(c echo.Context) error {
 			{"Reviews rating", strconv.Itoa(game.ReviewsRating)},
 			{"Developers", strings.Join(game.Developers, "\n")},
 			{"Publishers", strings.Join(game.Publishers, "\n")},
-			{"Release date", game.ReleaseDate[:10]},
+			{"Release date", game.ReleaseDate},
 		},
 		Languages:   languages,
 		Screenshots: game.Screenshots,
