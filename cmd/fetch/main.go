@@ -50,7 +50,7 @@ func main() {
 		if err == nil {
 			break
 		}
-		log.Fatalf("failed to create repo: %v, retrying in 10s...", err)
+		log.Printf("failed to create repo: %v, retrying in 10s...", err)
 		time.Sleep(10 * time.Second)
 	}
 

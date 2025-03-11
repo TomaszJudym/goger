@@ -1,302 +1,272 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
-	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/labstack/echo/v4"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/tomaszjudym/goger"
 )
 
-type Repo interface {
-	ReviewsForGame(title string, offset, limit int) (goger.RepoReviews, error)
-	CountGames() (int, error)
-	GameReviewsCount(gameID string) (int, error)
-	MostReviewedGamesWithRevTs(hours, limit int) (goger.TrendingGames, error)
-	AverageReviewsPerGame() (float64, error)
-	MostPopularGames(limit int) (goger.ProductsRepo, error)
-	MostPositiveGames(limit int) (goger.ProductsRepo, error)
-	MostNegativeGames(limit int) (goger.ProductsRepo, error)
-	TopLanguages(limit int) ([]goger.LanguageCount, error)
-	TopRatingVals(limit int) ([]goger.RatingVal, error)
-	GamesWithMostReviewsIn1Day(limit int) ([]goger.GameWithMostReviewsIn1Day, error)
-	AvgReviewsPerUser() (float64, error)
-	AvgReviewsPerGame() (float64, error)
-	MostReviewsPerUser() (int, error)
-	TopYearToGamesReleased(limit int) ([]goger.GamesReleasedByYear, error)
-	DayWithMostReviews() (time.Time, int, error)
-	GamesPerDeveloper(limit int) ([][2]string, error)
-	Game(title string) (goger.ProductRepo, error)
-	MostCommonLanguages(title string, limit uint) ([]goger.LanguageCount, error)
-	ReviewsStats(title string) (goger.ReviewStats, error)
+// timeRFC3339 is a type alias for time.Time with custom JSON unmarshaling.
+type timeRFC3339 time.Time
+
+// UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
+func (ct *timeRFC3339) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+
+	// Add "Z" if no timezone is present, assuming UTC.
+	if len(s) == 19 || len(s) == 26 {
+		s += "Z"
+	}
+
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return err
+	}
+
+	*ct = timeRFC3339(t)
+	return nil
 }
 
-var (
-	db        Repo
-	rdb       *redis.Client
-	indexTmpl *template.Template
-)
+func (t timeRFC3339) String() string {
+	return time.Time(t).Format(time.RFC3339)
+}
 
-func init() {
-	var err error
-	db, err = goger.NewRepo(slog.New(slog.NewTextHandler(os.Stdout, nil)))
-	if err != nil {
-		log.Fatalf("Failed to connect to db: %v", err)
+type timeDate time.Time
+
+// UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
+func (ct *timeDate) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
 	}
 
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     "redis:6379",
-		Password: "",
-		DB:       0, // Use default DB
-	})
-
-	indexTmpl, err = template.ParseFiles("templates/index.html")
+	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
-		log.Fatalf("Failed to parse index template: %v", err)
+		return err
 	}
+
+	*ct = timeDate(t)
+	return nil
+}
+
+func (t timeDate) String() string {
+	return time.Time(t).Format("2006-01-02")
+}
+
+// GameStatistics represents the overall statistics for games.
+type GameStatistics struct {
+	TotalGames           int                  `db:"total_games"`
+	TotalReviews         int                  `db:"total_reviews"`
+	AvgGameRating        float64              `db:"avg_game_rating"`
+	GamesWithReviews     int                  `db:"games_with_reviews"`
+	PriceStatistics      PriceStatistics      `db:"price_statistics"`
+	TopGenres            TopGenres            `db:"top_genres"`
+	OsDistribution       OsDistribution       `db:"os_distribution"`
+	TopPublishers        TopPublishers        `db:"top_publishers"`
+	TopDevelopers        TopDevelopers        `db:"top_developers"`
+	ReleaseTrends        ReleaseTrends        `db:"release_trends"`
+	MostReviewedGames    MostReviewedGames    `db:"most_reviewed_games"`
+	HighestRatedGames    HighestRatedGames    `db:"highest_rated_games"`
+	RecentlyUpdatedGames RecentlyUpdatedGames `db:"recently_updated_games"`
+	ViewRefreshTime      timeRFC3339          `db:"view_refresh_time"`
+}
+
+// PriceStatistics represents price statistics by currency.
+type PriceStatistics []struct {
+	Currency    string  `json:"currency"`
+	AvgPrice    float64 `json:"avg_price"`
+	MaxPrice    float64 `json:"max_price"`
+	MinPrice    float64 `json:"min_price"`
+	TotalGames  int     `json:"total_games"`
+	AvgDiscount float64 `json:"avg_discount"`
+	GamesOnSale int     `json:"games_on_sale"`
+}
+
+// scanJSON converts a SQL value to a byte slice.
+func scanJSON(src any, v any) error {
+	if src == nil {
+		return nil
+	}
+	byteValue, err := toByteSlice(src)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(byteValue, v)
+}
+
+// toByteSlice converts a SQL value to a byte slice.
+func toByteSlice(src any) ([]byte, error) {
+	switch src := src.(type) {
+	case []byte:
+		return src, nil
+	case string:
+		return []byte(src), nil
+	default:
+		return nil, fmt.Errorf("unsupported type: %T", src)
+	}
+}
+
+// Scan implements the sql.Scanner interface for PriceStatistics.
+func (p *PriceStatistics) Scan(src any) error {
+	return scanJSON(src, p)
+}
+
+// TopGenres represents the top genres.
+type TopGenres []struct {
+	Genre     string  `json:"genre"`
+	GameCount int     `json:"game_count"`
+	AvgRating float64 `json:"avg_rating"`
+	AvgPrice  float64 `json:"avg_price"`
+}
+
+// Scan implements the sql.Scanner interface for TopGenres.
+func (t *TopGenres) Scan(src any) error {
+	return scanJSON(src, t)
+}
+
+// OsDistribution represents the operating system distribution.
+type OsDistribution []struct {
+	Os        string `json:"os"`
+	GameCount int    `json:"game_count"`
+}
+
+// Scan implements the sql.Scanner interface for OsDistribution.
+func (o *OsDistribution) Scan(src any) error {
+	return scanJSON(src, o)
+}
+
+// TopPublishers represents the top publishers.
+type TopPublishers []struct {
+	Publisher      string  `json:"publisher"`
+	PublishedGames int     `json:"published_games"`
+	AvgRating      float64 `json:"avg_rating"`
+}
+
+// Scan implements the sql.Scanner interface for TopPublishers.
+func (t *TopPublishers) Scan(src any) error {
+	return scanJSON(src, t)
+}
+
+// TopDevelopers represents the top developers.
+type TopDevelopers []struct {
+	Developer      string  `json:"developer"`
+	DevelopedGames int     `json:"developed_games"`
+	AvgRating      float64 `json:"avg_rating"`
+}
+
+// Scan implements the sql.Scanner interface for TopDevelopers.
+func (t *TopDevelopers) Scan(src any) error {
+	return scanJSON(src, t)
+}
+
+// ReleaseTrends represents the release trends.
+type ReleaseTrends []struct {
+	Month         timeRFC3339 `json:"month"`
+	GamesReleased int         `json:"games_released"`
+	AvgRating     float64     `json:"avg_rating"`
+}
+
+// Scan implements the sql.Scanner interface for ReleaseTrends.
+func (r *ReleaseTrends) Scan(src any) error {
+	return scanJSON(src, r)
+}
+
+// MostReviewedGames represents the most reviewed games.
+type MostReviewedGames []struct {
+	Id           int      `json:"id"`
+	Title        string   `json:"title"`
+	ReviewsCount int      `json:"reviews_count"`
+	Rating       int      `json:"rating"`
+	ReleaseDate  timeDate `json:"release_date"`
+}
+
+// Scan implements the sql.Scanner interface for MostReviewedGames.
+func (m *MostReviewedGames) Scan(src any) error {
+	return scanJSON(src, m)
+}
+
+// HighestRatedGames represents the highest rated games.
+type HighestRatedGames []struct {
+	Id           int      `json:"id"`
+	Title        string   `json:"title"`
+	ReviewsCount int      `json:"reviews_count"`
+	Rating       int      `json:"rating"`
+	ReleaseDate  timeDate `json:"release_date"`
+}
+
+// Scan implements the sql.Scanner interface for HighestRatedGames.
+func (h *HighestRatedGames) Scan(src any) error {
+	return scanJSON(src, h)
+}
+
+// RecentlyUpdatedGames represents the recently updated games.
+type RecentlyUpdatedGames []struct {
+	Id        int         `json:"id"`
+	Title     string      `json:"title"`
+	UpdatedAt timeRFC3339 `json:"updated_at"`
+}
+
+// Scan implements the sql.Scanner interface for RecentlyUpdatedGames.
+func (r *RecentlyUpdatedGames) Scan(src any) error {
+	return scanJSON(src, r)
 }
 
 func main() {
-	e := echo.New()
-	e.GET("/", handlerIndex)
-	e.GET("/games/:title", handlerGame)
-	e.GET("/reviews/:title", handlerReviews)
-	e.File("favicon.png", "static/favicon.png")
-	e.Static("/static", "static")
-	fmt.Printf("Server running on: %s", ":8080")
-	log.Fatal(e.Start(":8080"))
+	http.HandleFunc("/", dashboardHandler)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-type IndexData struct {
-	Trending            []goger.UIGame
-	TrendingChart       []goger.UIGame
-	Top                 []goger.UIGame
-	TopNegative         []goger.UIGame
-	TopPositive         []goger.UIGame
-	TopGamesIn1Day      []goger.GameWithMostReviewsIn1Day
-	TopLanguages        []goger.LanguageCount
-	Ratings             []goger.RatingVal
-	YearToGamesReleased []goger.GamesReleasedByYear
-	AvgReviewsPerUser   float64
-	AvgReviewsPerGame   float64
-	MostReviewsPerUser  int
-	MostReviewsDay      string
-	MostReviewsIn1Day   int
-	GamesPerDeveloper   [][2]string
-}
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		dbHost     = "pg"
+		dbPort     = "5432"
+		dbUser     = "goger"
+		dbPassword = "goger"
+		dbName     = "goger"
+	)
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s "+
+		"dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
 
-type DataGame struct {
-	Title       string
-	Items       [][2]string // key -> vals
-	Languages   []goger.LanguageCount
-	Screenshots []string
-}
-
-func handlerIndex(c echo.Context) error {
-	start := time.Now()
-
-	// Get page parameter from the query string
-	page, err := strconv.Atoi(c.QueryParam("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	trendingGames, err := db.MostReviewedGamesWithRevTs(14*24, 5)
+	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
-		log.Printf("Failed to get most reviewed games with rev ts: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+		http.Error(w, fmt.Sprintf("failed to open pg connection %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err = db.Ping(); err != nil {
+		http.Error(w, fmt.Sprintf("failed to ping pg: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	popularGames, err := db.MostPopularGames(5)
+	_, err = db.Exec("REFRESH MATERIALIZED VIEW game_statistics")
 	if err != nil {
-		log.Printf("Failed to get trending games: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+		log.Fatalf("Error refreshing materialized view: %v", err)
 	}
 
-	mostRevsIn1DayGames, err := db.GamesWithMostReviewsIn1Day(5)
+	var data GameStatistics
+	if err = db.Get(&data, `select * from game_statistics`); err != nil {
+		http.Error(w, fmt.Sprintf("Error calling view: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl, err := template.ParseFiles("templates/dashboard.html")
 	if err != nil {
-		log.Printf("Failed to games with most reviews in 1 day: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+		http.Error(w, fmt.Sprintf("Parse: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	popularGames, err = db.MostPositiveGames(5)
-	if err != nil {
-		log.Printf("Failed to get most positive games: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
+	if err = tmpl.Execute(w, data); err != nil {
+		http.Error(w, fmt.Sprintf("Execute: %v", err), http.StatusInternalServerError)
+		return
 	}
 
-	negativeGames, err := db.MostNegativeGames(5)
-	if err != nil {
-		log.Printf("Failed to get most negative games: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	topLanguages, err := db.TopLanguages(5)
-	if err != nil {
-		log.Printf("Failed to get top languages: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	topRatingVals, err := db.TopRatingVals(5)
-	if err != nil {
-		log.Printf("Failed to get top rating val: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	yearsToGames, err := db.TopYearToGamesReleased(100) // all
-	if err != nil {
-		log.Printf("Failed to get years to games released: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	avgRevsPerUser, err := db.AvgReviewsPerUser()
-	if err != nil {
-		log.Printf("Failed to get avg reviews per user: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	avgRevsPerGame, err := db.AvgReviewsPerGame()
-	if err != nil {
-		log.Printf("Failed to get avg reviews per user: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	mostReviewsPerUser, err := db.MostReviewsPerUser()
-	if err != nil {
-		log.Printf("Failed to get most reviews per user: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	mostReviewsDay, mostReviewsIn1Day, err := db.DayWithMostReviews()
-	if err != nil {
-		log.Printf("Failed to get day with most reviews: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	gamesPerDev, err := db.GamesPerDeveloper(10)
-	if err != nil {
-		log.Printf("Failed to get days per developer: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	data := IndexData{
-		Trending:            trendingGames.ToUI(),
-		Top:                 popularGames.ToUI(),
-		TopGamesIn1Day:      mostRevsIn1DayGames,
-		TopPositive:         popularGames.ToUI(),
-		TopNegative:         negativeGames.ToUI(),
-		TopLanguages:        topLanguages,
-		Ratings:             topRatingVals,
-		YearToGamesReleased: yearsToGames,
-		AvgReviewsPerUser:   avgRevsPerUser,
-		AvgReviewsPerGame:   avgRevsPerGame,
-		MostReviewsPerUser:  mostReviewsPerUser,
-		MostReviewsDay:      mostReviewsDay.Format("2006-01-02"),
-		MostReviewsIn1Day:   mostReviewsIn1Day,
-		GamesPerDeveloper:   gamesPerDev,
-	}
-
-	// Use Echo's Render function to return the template
-	var buff bytes.Buffer
-	if err = indexTmpl.Execute(&buff, data); err != nil {
-		log.Printf("Failed to execute template: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	// Send the response
-	if _, err = c.Response().Write(buff.Bytes()); err != nil {
-		log.Printf("Failed to write response: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	log.Printf("Served games in %v, for IP: %s, URI: %s",
-		time.Since(start), c.Request().RemoteAddr, c.Request().RequestURI)
-	return nil
-}
-
-func handlerGame(c echo.Context) error {
-	title := c.Param("title")
-	if title == "" {
-		return c.JSON(http.StatusBadRequest, "title param missing")
-	}
-
-	game, err := db.Game(title)
-	if err != nil {
-		log.Printf("failed to get game %s: %v", title, err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	languages, err := db.MostCommonLanguages(title, 5)
-	if err != nil {
-		log.Printf("failed to get most common languages: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	if len(game.ReleaseDate) > 9 {
-		game.ReleaseDate = game.ReleaseDate[:10]
-	}
-	data := DataGame{
-		Title: game.Title,
-		Items: [][2]string{
-			{"Reviews count", strconv.Itoa(game.ReviewsCount)},
-			{"Reviews rating", strconv.Itoa(game.ReviewsRating)},
-			{"Developers", strings.Join(game.Developers, "\n")},
-			{"Publishers", strings.Join(game.Publishers, "\n")},
-			{"Release date", game.ReleaseDate},
-		},
-		Languages:   languages,
-		Screenshots: game.Screenshots,
-	}
-
-	tmpl, err := template.ParseFiles("templates/game.html")
-	if err != nil {
-		log.Printf("failed to parse game template: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	err = tmpl.Execute(c.Response().Writer, data)
-	if err != nil {
-		log.Printf("failed to execute game template: %v", err)
-		return c.JSON(http.StatusInternalServerError, "Internal Server Error")
-	}
-
-	return nil
-}
-
-func handlerReviews(c echo.Context) error {
-	title := c.Param("title")
-	if title == "" {
-		return c.JSON(http.StatusBadRequest, "title param missing")
-	}
-
-	stats, err := db.ReviewsStats(title)
-	if err != nil {
-		return internal(c, "failed to get review stats: %w", err)
-	}
-
-	marshalled, err := json.MarshalIndent(stats, " ", "\t")
-	if err != nil {
-		return internal(c, "xD1")
-	}
-	_, err = c.Response().Write(marshalled)
-	if err != nil {
-		return internal(c, "xD2")
-	}
-	return nil
-}
-
-func internal(c echo.Context, msg string, args ...any) error {
-	log.Printf(msg, args...)
-	return c.JSON(http.StatusBadRequest, "internal error")
 }

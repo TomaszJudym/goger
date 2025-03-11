@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GOGer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #1a1a2e;
+            color: #e0e0f8;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        h1, h2 {
+            color: #b39ddb;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            background-color: #282846;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            border: 1px solid #373763;
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #322f5a;
+            font-weight: 600;
+        }
+
+        .section {
+            background-color: #282846;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+
+        .list-items {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .list-items li {
+            margin-bottom: 10px;
+            padding: 10px 15px;
+            background-color: #322f5a;
+            border-radius: 5px;
+        }
+
+        .price-statistics {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .price-statistics div {
+            flex: 1 1 300px;
+            border: 1px solid #373763;
+            padding: 20px;
+            margin: 10px;
+            background-color: #322f5a;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .price-statistics div p {
+            margin: 5px 0;
+        }
+
+        table tr:hover {
+            background-color: #373763;
+        }
+
+        .list-items li:hover {
+            background-color: #373763;
+        }
+
+        .price-statistics div:hover {
+            background-color: #373763;
+        }
+
+        .section:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .section p {
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>GOGer</h1>
+
+        <div class="section">
+            <p>Total Games: {{.TotalGames}}</p>
+            <p>Total Reviews: {{.TotalReviews}}</p>
+            <p>Average Game Rating: {{.AvgGameRating}}</p>
+            <p>Games with Reviews: {{.GamesWithReviews}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Prices</h2>
+            <div class="price-statistics">
+                {{range .PriceStatistics}}
+                <div>
+                    <p>Currency: {{.Currency}}</p>
+                    <p>Average Price: {{.AvgPrice}}</p>
+                    <p>Max Price: {{.MaxPrice}}</p>
+                    <p>Min Price: {{.MinPrice}}</p>
+                    <p>Total Games: {{.TotalGames}}</p>
+                    <p>Average Discount: {{.AvgDiscount}}</p>
+                    <p>Games on Sale: {{.GamesOnSale}}</p>
+                </div>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Top Genres</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Genre</th>
+                        <th>Average Price</th>
+                        <th>Average Rating (out of 50)</th>
+                        <th>Game Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopGenres}}
+                    <tr>
+                        <td>{{.Genre}}</td>
+                        <td>{{.AvgPrice}}</td>
+                        <td>{{.AvgRating}}</td>
+                        <td>{{.GameCount}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>OS Distribution</h2>
+            <ul class="list-items">
+                {{range .OsDistribution}}
+                <li>{{.Os}}: {{.GameCount}}</li>
+                {{end}}
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Top Publishers</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Publisher</th>
+                        <th>Average Rating</th>
+                        <th>Published Games</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopPublishers}}
+                    <tr>
+                        <td>{{.Publisher}}</td>
+                        <td>{{.AvgRating}}</td>
+                        <td>{{.PublishedGames}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Top Developers</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Developer</th>
+                        <th>Average Rating</th>
+                        <th>Developed Games</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .TopDevelopers}}
+                    <tr>
+                        <td>{{.Developer}}</td>
+                        <td>{{.AvgRating}}</td>
+                        <td>{{.DevelopedGames}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Release Trends</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Average Rating</th>
+                        <th>Games Released</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .ReleaseTrends}}
+                    <tr>
+                        <td>{{.Month}}</td>
+                        <td>{{.AvgRating}}</td>
+                        <td>{{.GamesReleased}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Most Reviewed Games</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Rating</th>
+                        <th>Release Date</th>
+                        <th>Reviews Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .MostReviewedGames}}
+                    <tr>
+                        <td>{{.Id}}</td>
+                        <td>{{.Title}}</td>
+                        <td>{{.Rating}}</td>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.ReviewsCount}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Highest Rated Games</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Rating</th>
+                        <th>Release Date</th>
+                        <th>Reviews Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .HighestRatedGames}}
+                    <tr>
+                        <td>{{.Id}}</td>
+                        <td>{{.Title}}</td>
+                        <td>{{.Rating}}</td>
+                        <td>{{.ReleaseDate}}</td>
+                        <td>{{.ReviewsCount}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Recently Updated Games</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Updated At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .RecentlyUpdatedGames}}
+                    <tr>
+                        <td>{{.Id}}</td>
+                        <td>{{.Title}}</td>
+                        <td>{{.UpdatedAt}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <p>Refresh Time: {{.ViewRefreshTime}}</p>
+        </div>
+    </div>
+
+</body>
+</html>

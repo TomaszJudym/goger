@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:17.4-bookworm
+    #command: -c config_file=/etc/postgresql.conf
     container_name: pg
     deploy:
       resources:
@@ -15,10 +16,8 @@ services:
       # :z shut up about security when running go mod tidy
       - ./postgres-data:/var/lib/postgresql/data:z 
       - ./init-scripts:/docker-entrypoint-initdb.d
-# Custom config
-      - ./postgresql.conf:/etc/postgresql/postgresql.conf
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "goger"]
+      test: ["CMD-SHELL", "pg_isready", "-d", "goger", "-U", "goger"]
       interval: 5s
       timeout: 30s
       retries: 5
@@ -28,25 +27,10 @@ services:
     networks:
       - db-network
 
-  redis:
-    image: redis:latest
-    command: [sh, -c, "rm -f /data/dump.rdb && redis-server"]  # disable persistence
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 30s
-      retries: 5
-      start_period: 2s
-    networks:
-      - redis-network
-
   fetcher:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: fetcher
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,7 +39,6 @@ services:
 
   nginx:
     image: nginx:bookworm
-    container_name: nginx
     ports:
       - "80:80"
     depends_on:
@@ -70,23 +53,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-front
-    container_name: fronter
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - db-network
-      - redis-network
       - nginx-network
 
 networks:
   db-network:
-  redis-network:
   nginx-network:
 
 volumes:
   nginx_logs:
-
 

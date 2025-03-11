@@ -482,7 +482,7 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 		}
 		return 0, err
 	}
-	r.logger.Info("Added reviews", "count", affectedRows)
+	r.logger.Info("Added reviews", "count", affectedRows, "gameID", reviews[0].ProductID)
 	numNewReviews := int(affectedRows)
 
 	sql, _, err = tx.Update("games").

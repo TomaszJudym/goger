@@ -58,3 +58,6 @@ a single view from pg. At least for index page it should 1 query.
 Instantly cached too.
 9. https://github.com/huntabyte/shadcn-svelte maybe this for UI?
 
+
+TODO template error
+Currency: Execute: template: dashboard.html:97:35: executing "dashboard.html" at : error calling index: can't index item of type uint8
