@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	svg "github.com/ajstarks/svgo"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -78,6 +80,7 @@ type GameStatistics struct {
 	HighestRatedGames    HighestRatedGames    `db:"highest_rated_games"`
 	RecentlyUpdatedGames RecentlyUpdatedGames `db:"recently_updated_games"`
 	ViewRefreshTime      timeRFC3339          `db:"view_refresh_time"`
+	SvgData              template.HTML
 }
 
 // PriceStatistics represents price statistics by currency.
@@ -96,23 +99,23 @@ func scanJSON(src any, v any) error {
 	if src == nil {
 		return nil
 	}
-	byteValue, err := toByteSlice(src)
-	if err != nil {
-		return err
+
+	var byteValue []byte
+	switch src := src.(type) {
+	case []byte:
+		byteValue = src
+	case string:
+		byteValue = []byte(src)
+	default:
+		return fmt.Errorf("unsupported type: %T", src)
 	}
+
 	return json.Unmarshal(byteValue, v)
 }
 
-// toByteSlice converts a SQL value to a byte slice.
-func toByteSlice(src any) ([]byte, error) {
-	switch src := src.(type) {
-	case []byte:
-		return src, nil
-	case string:
-		return []byte(src), nil
-	default:
-		return nil, fmt.Errorf("unsupported type: %T", src)
-	}
+type DataPoint struct {
+	Date  time.Time `db:"review_day"`
+	Value int       `db:"total_reviews"`
 }
 
 // Scan implements the sql.Scanner interface for PriceStatistics.
@@ -258,6 +261,13 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	svgBuff, err := newReviewsSVG(db)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to build reviews SVG: %v", err), http.StatusInternalServerError)
+		return
+	}
+	data.SvgData = template.HTML(svgBuff.String())
+
 	tmpl, err := template.ParseFiles("templates/dashboard.html")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Parse: %v", err), http.StatusInternalServerError)
@@ -269,4 +279,111 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func newReviewsSVG(db *sqlx.DB) (*bytes.Buffer, error) {
+	data, err := reviewData(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reviews data: %w", err)
+	}
+	return newSVGChart(data)
+}
+
+func reviewData(db *sqlx.DB) ([]DataPoint, error) {
+	query := `
+                SELECT
+                        DATE_TRUNC('day', review_date) AS review_day,
+                        COUNT(*) AS total_reviews
+                FROM
+                        reviews
+                WHERE
+                        review_date IS NOT NULL
+                GROUP BY
+                        review_day
+                ORDER BY
+                        review_day;
+        `
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var data []DataPoint
+	for rows.Next() {
+		var dp DataPoint
+		if err := rows.Scan(&dp.Date, &dp.Value); err != nil {
+			return nil, err
+		}
+		data = append(data, dp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
+	const (
+		chartWidth  = 600
+		chartHeight = 400
+	)
+	// TODO: Make graph fit page width.
+	// Don't display all dates on X axis
+	if len(data) > 100 {
+		data = data[:100]
+	}
+
+	var buf bytes.Buffer
+	canvas := svg.New(&buf)
+	canvas.Start(chartWidth, chartHeight)
+
+	// Background color
+	backgroundColor := "rgb(20, 0, 40)"
+	canvas.Rect(0, 0, chartWidth, chartHeight, fmt.Sprintf("fill:%s", backgroundColor))
+
+	// Axis color
+	axisColor := "rgb(221, 160, 221)"
+
+	// Axis positions
+	axisMargin := 40
+	axisY := chartHeight - axisMargin
+	axisX := axisMargin
+
+	// Draw x-axis
+	canvas.Line(axisX, axisY, chartWidth-axisMargin, axisY, fmt.Sprintf("stroke:%s; stroke-width:2", axisColor))
+
+	// Draw y-axis
+	canvas.Line(axisX, axisMargin, axisX, chartHeight-axisMargin, fmt.Sprintf("stroke:%s; stroke-width:2", axisColor))
+
+	// Draw Data Points as vertical lines
+	if len(data) > 0 {
+		maxValue := 0
+		for _, dp := range data {
+			if dp.Value > maxValue {
+				maxValue = dp.Value
+			}
+		}
+
+		lineColor := "rgb(153, 50, 204)" // Light purple lines
+		lineWidth := 2
+
+		// Calculate scaling factors
+		xScale := float64(chartWidth-2*axisMargin) / float64(len(data)-1)
+		yScale := float64(chartHeight-2*axisMargin) / float64(maxValue)
+
+		for i, dp := range data {
+			x := int(float64(i)*xScale) + axisMargin
+			y := chartHeight - axisMargin - int(float64(dp.Value)*yScale)
+
+			canvas.Line(x, chartHeight-axisMargin, x, y, fmt.Sprintf("stroke:%s; stroke-width:%d", lineColor, lineWidth))                            // Draw vertical lines
+			canvas.Text(x, chartHeight-axisMargin+15, dp.Date.Format("01-02"), fmt.Sprintf("fill:%s; text-anchor:middle; font-size:8px", axisColor)) // Add date labels
+		}
+	}
+
+	canvas.End()
+	return &buf, nil
 }

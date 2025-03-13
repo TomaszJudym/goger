@@ -227,46 +227,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create an AFTER INSERT trigger to invoke the maintain_queue_size function
-CREATE TRIGGER maintain_queue_size_trigger
-AFTER INSERT ON run
-FOR EACH STATEMENT EXECUTE FUNCTION maintain_queue_size();
-
-
--- Notify about changes in games table
-CREATE OR REPLACE FUNCTION notify_games_change() RETURNS TRIGGER AS $$
-BEGIN
-  PERFORM pg_notify('games_changes', json_build_object(
-    'id', NEW.id,
-    'title', NEW.title,
-    'reviews_count', NEW.reviews_count
-  )::text);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER games_after_change
-AFTER INSERT OR UPDATE OR DELETE ON games
-FOR EACH ROW EXECUTE FUNCTION notify_games_change();
-
-
--- Notify about changes in reviews table
-CREATE OR REPLACE FUNCTION notify_reviews_change() RETURNS TRIGGER AS $$
-BEGIN
-  PERFORM pg_notify('reviews_changes', json_build_object(
-    'product_id', NEW.product_id,
-    'title', NEW.title,
-    'description_len', length(NEW.description)
-  )::text);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER reviews_after_change
-AFTER INSERT OR UPDATE OR DELETE ON reviews
-FOR EACH ROW EXECUTE FUNCTION notify_reviews_change();
-
-
 -- Create a materialized view for better performance with periodic updates
 CREATE MATERIALIZED VIEW game_statistics AS
 WITH review_stats AS (

@@ -107,12 +107,30 @@
             text-align: center;
         }
 
+       .svg-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        .svg-container svg {
+            max-width: 100%;
+            height: auto;
+        }
+
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>GOGer</h1>
+
+        <div class="section">
+            <h2>Reviews</h2>
+            <div class="svg-container">
+                {{.SvgData}}
+            </div>
+        </div>
 
         <div class="section">
             <p>Total Games: {{.TotalGames}}</p>
@@ -313,6 +331,11 @@
 
         <div class="section">
             <p>Refresh Time: {{.ViewRefreshTime}}</p>
+        </div>
+
+        HTML
+
+            Refresh Time: {{.ViewRefreshTime}}</p>
         </div>
     </div>
 
