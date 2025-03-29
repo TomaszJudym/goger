@@ -4,11 +4,10 @@ RUN apk update && apk upgrade
 WORKDIR /builder
 COPY go.mod go.sum *.go cmd ./
 RUN go mod download
-# For development there's no need for packer
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 cd front && go build \
   -ldflags='-w -s -extldflags "-static"' -a \
-  -o app                                    \
-  front/main.go                       
+  -o ../app
+# For development there's no need for packer
 # && upx -9 app
 
 FROM gcr.io/distroless/static

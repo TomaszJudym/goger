@@ -161,6 +161,14 @@
             .date-label span:nth-child(10n+1) {
                 visibility: visible; /* Show every 10th label */
             }
+            a {
+                color: #b39ddb;
+                text-decoration: none;
+            }
+
+            a:hover {
+                text-decoration: underline;
+            }
         </style>
     </head>
     <body>
@@ -338,8 +346,8 @@
                     <tbody>
                         {{range .MostReviewedGames}}
                         <tr>
-                            <td>{{.Id}}</td>
-                            <td>{{.Title}}</td>
+                            <td><a href="/game?id={{.Id}}">{{.Id}}</a></td>
+                            <td><a href="/game?id={{.Id}}">{{.Title}}</a></td>
                             <td>{{.Rating}}</td>
                             <td>{{.ReleaseDate}}</td>
                             <td>{{.ReviewsCount}}</td>
@@ -364,8 +372,8 @@
                     <tbody>
                         {{range .HighestRatedGames}}
                         <tr>
-                            <td>{{.Id}}</td>
-                            <td>{{.Title}}</td>
+                            <td><a href="/game?id={{.Id}}">{{.Id}}</a></td>
+                            <td><a href="/game?id={{.Id}}">{{.Title}}</a></td>
                             <td>{{.Rating}}</td>
                             <td>{{.ReleaseDate}}</td>
                             <td>{{.ReviewsCount}}</td>
@@ -388,8 +396,8 @@
                     <tbody>
                         {{range .RecentlyUpdatedGames}}
                         <tr>
-                            <td>{{.Id}}</td>
-                            <td>{{.Title}}</td>
+                            <td><a href="/game?id={{.Id}}">{{.Id}}</a></td>
+                            <td><a href="/game?id={{.Id}}">{{.Title}}</a></td>
                             <td>{{.UpdatedAt}}</td>
                         </tr>
                         {{end}}

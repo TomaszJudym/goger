@@ -1,11 +1,11 @@
-Check 
+Check
 https://embed.gog.com/games/ajax/filtered?mediaType=game&search=Witcher%203
 Or generally where to take game IDs from
 Then reviews can be accessed like:
 https://reviews.gog.com/v1/products/1256837418/reviews?limit=2&page=13
 
 game id is just in response document undeR:
-product_id: 
+product_id:
 Can already grep for it from golang
 
 Games actually also can be scrapped with go
@@ -53,11 +53,6 @@ current run. Or if some game's values changed
 5. % of games per developer
 6. On each game side - chart time to number of reviews
 7. Store thumbnails for games and display them.
-8. Change fetching of all this garbage in fronter into fetching
-a single view from pg. At least for index page it should 1 query.
-Instantly cached too.
-9. https://github.com/huntabyte/shadcn-svelte maybe this for UI?
 
-
-TODO template error
-Currency: Execute: template: dashboard.html:97:35: executing "dashboard.html" at : error calling index: can't index item of type uint8
+Unmarshalling game page.
+One unmarshal function to handle different stuff?
