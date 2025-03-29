@@ -21,11 +21,11 @@ type GameSpecificStatistics struct {
 	PriceFinal    float64        `db:"price_final"`
 	ReviewsCount  int            `db:"reviews_count"`
 	ReviewsRating int            `db:"reviews_rating"`
-	Genres        pq.StringArray `db:"genres"` // Changed to StringArray
-	Description   string         // Added description field
-	Screenshots   pq.StringArray `db:"screenshots"` // Add this line
-	ReviewData    []DataPoint    // Data for the review history bar chart
-	RatingData    []DataPoint    // Data for the rating history bar chart // ADDED
+	Genres        pq.StringArray `db:"genres"`
+	Description   string
+	Screenshots   pq.StringArray `db:"screenshots"`
+	ReviewData    []DataPoint
+	RatingData    []DataPoint
 }
 
 func GameHandler(db *sqlx.DB) http.HandlerFunc {
@@ -48,30 +48,25 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("Game not found: %v", err), http.StatusNotFound)
 			return
 		}
-		// Get game description (if available) - you might need to adjust the query if the description is in a different table
 		err = db.Get(&gameData.Description, `SELECT description FROM reviews WHERE product_id = $1 LIMIT 1`, gameID)
 		if err != nil {
-			gameData.Description = "No description available" // Default if no description found
+			gameData.Description = "No description available"
 		}
 
-		//Get review data for game
 		gameData.ReviewData, err = reviewDataForGame(db, gameID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get reviews data: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		// Get rating data for game
-		gameData.RatingData, err = ratingDataForGame(db, gameID) // ADDED
+		gameData.RatingData, err = ratingDataForGame(db, gameID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get rating data: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		// Aggregate data if we have > 100 data points
 		if len(gameData.ReviewData) > 100 {
 			log.Printf("Original Review Data Length: %d\n", len(gameData.ReviewData))
-			// Aggregate the data to fit 100 points
 			aggregatedData := make([]DataPoint, 100)
 			binSize := len(gameData.ReviewData) / 100
 
@@ -79,7 +74,7 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 				startIndex := i * binSize
 				endIndex := (i + 1) * binSize
 				if i == 99 {
-					endIndex = len(gameData.ReviewData) // Make sure to include all remaining data in the last bin
+					endIndex = len(gameData.ReviewData)
 				}
 
 				totalReviews := 0.0
@@ -91,7 +86,6 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 					totalReviews = totalReviews / float64(binLength)
 				}
 
-				// Calculate the average date for the bin
 				var totalTime time.Time
 				for j := startIndex; j < endIndex; j++ {
 					totalTime = totalTime.Add(gameData.ReviewData[j].Date.Sub(time.Time{}))
@@ -103,10 +97,8 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 			gameData.ReviewData = aggregatedData
 		}
-		// Aggregate rating data if we have > 100 data points // ADDED
 		if len(gameData.RatingData) > 100 {
 			log.Printf("Original Rating Data Length: %d\n", len(gameData.RatingData))
-			// Aggregate the data to fit 100 points
 			aggregatedData := make([]DataPoint, 100)
 			binSize := len(gameData.RatingData) / 100
 
@@ -114,19 +106,17 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 				startIndex := i * binSize
 				endIndex := (i + 1) * binSize
 				if i == 99 {
-					endIndex = len(gameData.RatingData) // Make sure to include all remaining data in the last bin
+					endIndex = len(gameData.RatingData)
 				}
 
 				totalRatingValue := 0.0
 				for j := startIndex; j < endIndex; j++ {
 					totalRatingValue += gameData.RatingData[j].Value
 				}
-				// Calculate the average rating value for the bin
 				binLength := endIndex - startIndex
 				if binLength > 0 {
 					totalRatingValue = totalRatingValue / float64(binLength)
 				}
-				// Round the average rating value to 2 decimal places
 				totalRatingValue = float64(int(totalRatingValue*100)) / 100
 
 				var totalTime time.Time
@@ -140,11 +130,10 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 			gameData.RatingData = aggregatedData
 		}
-		// ... (Existing code for template function map and execution) ...
 		funcMap := template.FuncMap{
 			"div": func(a, b float64) float64 {
 				if b == 0 {
-					return 0 // Handle division by zero
+					return 0
 				}
 				return a / b
 			},
@@ -158,7 +147,7 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 				return a % b
 			},
 		}
-		tmpl := template.New("game.html").Funcs(funcMap) // Create a new template for game-specific stats
+		tmpl := template.New("game.html").Funcs(funcMap)
 		tmpl, err = tmpl.ParseFiles("templates/game.html")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Parse: %v", err), http.StatusInternalServerError)
@@ -172,21 +161,20 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ratingDataForGame queries the database and returns rating data over time. // ADDED
 func ratingDataForGame(db *sqlx.DB, gameID int) ([]DataPoint, error) {
 	query := `
-        SELECT
-            DATE_TRUNC('day', review_date) AS review_day,
-            AVG(rating_value) AS avg_rating
-        FROM
-            reviews
-        WHERE
-            review_date IS NOT NULL AND product_id = $1
-        GROUP BY
-            review_day
-        ORDER BY
-            review_day;
-    `
+								SELECT
+												DATE_TRUNC('day', review_date) AS review_day,
+												AVG(rating_value) AS avg_rating
+								FROM
+												reviews
+								WHERE
+												review_date IS NOT NULL AND product_id = $1
+								GROUP BY
+												review_day
+								ORDER BY
+												review_day;
+				`
 	rows, err := db.Query(query, gameID)
 	if err != nil {
 		return nil, err
@@ -196,31 +184,30 @@ func ratingDataForGame(db *sqlx.DB, gameID int) ([]DataPoint, error) {
 	var data []DataPoint
 	for rows.Next() {
 		var dp DataPoint
-		var avgRating float64 // Need to scan into a float64
+		var avgRating float64
 		if err := rows.Scan(&dp.Date, &avgRating); err != nil {
 			return nil, err
 		}
-		dp.Value = avgRating // Convert to integer for chart
+		dp.Value = avgRating
 		data = append(data, dp)
 	}
 	return data, rows.Err()
 }
 
-// reviewDataForGame queries the database and returns review data over time.
 func reviewDataForGame(db *sqlx.DB, gameID int) ([]DataPoint, error) {
 	query := `
-                SELECT
-                        DATE_TRUNC('day', review_date) AS review_day,
-                        COUNT(*) AS total_reviews
-                FROM
-                        reviews
-                WHERE
-                        review_date IS NOT NULL AND product_id = $1
-                GROUP BY
-                        review_day
-                ORDER BY
-                        review_day;
-        `
+																SELECT
+																								DATE_TRUNC('day', review_date) AS review_day,
+																								COUNT(*) AS total_reviews
+																FROM
+																								reviews
+																WHERE
+																								review_date IS NOT NULL AND product_id = $1
+																GROUP BY
+																								review_day
+																ORDER BY
+																								review_day;
+								`
 
 	rows, err := db.Query(query, gameID)
 	if err != nil {
