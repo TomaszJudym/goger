@@ -100,7 +100,7 @@ func scanJSON(src any, v any) error {
 
 type DataPoint struct {
 	Date  time.Time `db:"review_day"`
-	Value int       `db:"total_reviews"`
+	Value float64   `db:"total_reviews"`
 }
 
 // Scan implements the sql.Scanner interface for PriceStatistics.
@@ -284,7 +284,7 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 				endIndex = len(data.ReviewData) // Make sure to include all remaining data in the last bin
 			}
 
-			totalReviews := 0
+			totalReviews := 0.0
 			for j := startIndex; j < endIndex; j++ {
 				totalReviews += data.ReviewData[j].Value
 			}

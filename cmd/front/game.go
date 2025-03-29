@@ -82,13 +82,13 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 					endIndex = len(gameData.ReviewData) // Make sure to include all remaining data in the last bin
 				}
 
-				totalReviews := 0
+				totalReviews := 0.0
 				for j := startIndex; j < endIndex; j++ {
 					totalReviews += gameData.ReviewData[j].Value
 				}
 				binLength := endIndex - startIndex
 				if binLength > 0 {
-					totalReviews = totalReviews / binLength
+					totalReviews = totalReviews / float64(binLength)
 				}
 
 				// Calculate the average date for the bin
@@ -105,7 +105,7 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		// Aggregate rating data if we have > 100 data points // ADDED
 		if len(gameData.RatingData) > 100 {
-			log.Printf("Original Rating Data Length: %d\n", len(gameData.RatingData)) // ADDED
+			log.Printf("Original Rating Data Length: %d\n", len(gameData.RatingData))
 			// Aggregate the data to fit 100 points
 			aggregatedData := make([]DataPoint, 100)
 			binSize := len(gameData.RatingData) / 100
@@ -117,22 +117,25 @@ func GameHandler(db *sqlx.DB) http.HandlerFunc {
 					endIndex = len(gameData.RatingData) // Make sure to include all remaining data in the last bin
 				}
 
-				totalReviews := 0
+				totalRatingValue := 0.0
 				for j := startIndex; j < endIndex; j++ {
-					totalReviews += gameData.RatingData[j].Value
+					totalRatingValue += gameData.RatingData[j].Value
 				}
-				// Calculate the average date for the bin
+				// Calculate the average rating value for the bin
 				binLength := endIndex - startIndex
 				if binLength > 0 {
-					totalReviews = totalReviews / binLength
+					totalRatingValue = totalRatingValue / float64(binLength)
 				}
+				// Round the average rating value to 2 decimal places
+				totalRatingValue = float64(int(totalRatingValue*100)) / 100
+
 				var totalTime time.Time
 				for j := startIndex; j < endIndex; j++ {
 					totalTime = totalTime.Add(gameData.RatingData[j].Date.Sub(time.Time{}))
 				}
 				aggregatedData[i] = DataPoint{
 					Date:  gameData.RatingData[startIndex].Date,
-					Value: totalReviews,
+					Value: totalRatingValue,
 				}
 			}
 			gameData.RatingData = aggregatedData
@@ -197,7 +200,7 @@ func ratingDataForGame(db *sqlx.DB, gameID int) ([]DataPoint, error) {
 		if err := rows.Scan(&dp.Date, &avgRating); err != nil {
 			return nil, err
 		}
-		dp.Value = int(avgRating) // Convert to integer for chart
+		dp.Value = avgRating // Convert to integer for chart
 		data = append(data, dp)
 	}
 	return data, rows.Err()

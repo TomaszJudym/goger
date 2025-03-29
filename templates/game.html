@@ -251,8 +251,8 @@
             <h2>Reviews Over Time</h2>
             {{$reviewMaxValue := 0.0}}
             {{range .ReviewData}}
-            {{if gt (float64 .Value) $reviewMaxValue}}
-            {{$reviewMaxValue = float64 .Value}}
+            {{if gt .Value $reviewMaxValue}}
+            {{$reviewMaxValue = .Value}}
             {{end}}
             {{end}}
             <div class="chart">
@@ -265,7 +265,7 @@
                 </div>
                 <div class="bar-container">
                     {{range $index, $element := .ReviewData}}
-                    {{$barHeight := printf "%.2f" (div (mul (float64 .Value) 100) $reviewMaxValue)}}
+                    {{$barHeight := printf "%.2f" (div (mul .Value 100) $reviewMaxValue)}}
                     <div class="bar" style="height: {{$barHeight}}%;"
                         title="{{.Date.Format "2006-01-02"}} - Count: {{.Value}}">
                         <!--<span class="bar-label">{{.Value}}</span>-->
@@ -285,8 +285,8 @@
             <h2>Average Rating Over Time</h2>
             {{$ratingMaxValue := 0.0}}
             {{range .RatingData}}
-                {{if gt (float64 .Value) $ratingMaxValue}}
-                    {{$ratingMaxValue = float64 .Value}}
+                {{if gt .Value $ratingMaxValue}}
+                    {{$ratingMaxValue = .Value}}
                 {{end}}
             {{end}}
             <div class="chart">
@@ -300,7 +300,7 @@
                 </div>
                 <div class="bar-container">
                     {{range $index, $element := .RatingData}}
-                        {{$barHeight := printf "%.2f" (div (mul (float64 .Value) 100) $ratingMaxValue)}}
+                        {{$barHeight := printf "%.2f" (div (mul .Value 100) $ratingMaxValue)}}
                         <div class="bar" style="height: {{$barHeight}}%;" title="{{.Date.Format "2006-01-02"}} - Rating: {{.Value}}">
                             <!--<span class="bar-label">{{.Value}}</span>-->
                         </div>
