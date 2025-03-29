@@ -112,10 +112,28 @@
             /* CSS for the bar chart */
             .chart {
                 width: 100%;
-                height: 300px; /* Adjust as needed */
+                height: 300px;
+                display: flex;
+                align-items: stretch; /* Make sure bars stretch to height */
+                padding: 10px 0;
+                position: relative; /* Needed for absolute positioning of labels */
+            }
+
+            .y-axis-labels {
+                width: 50px; /* Adjust as needed */
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                align-items: flex-end;
+                padding-right: 5px; /* Spacing between labels and bars */
+                color: #ccc;
+                font-size: 0.8em;
+            }
+
+            .bar-container {
+                flex: 1;  /* Take up remaining space */
                 display: flex;
                 align-items: flex-end;
-                padding: 10px 0;
             }
 
             .bar {
@@ -126,41 +144,59 @@
             }
 
             .bar-label {
-                position: absolute;
-                bottom: 0;
-                left: 50%;
-                transform: translateX(-50%);
-                color: white;
-                font-size: 0.8em;
-                white-space: nowrap;
+                /* Removed top positioning and display properties */
             }
 
             .date-label {
                 text-align: center;
                 margin-top: 5px;
+                display: flex;
+                justify-content: space-around; /* Distribute labels evenly */
+            }
+
+            .date-label span {
+                visibility: hidden; /* Hide all labels by default */
+            }
+
+            .date-label span:nth-child(10n+1) {
+                visibility: visible; /* Show every 10th label */
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>GOGer Dashboard</h1>
+            <h1>GOGer</h1>
 
             <div class="section">
                 <h2>Reviews</h2>
-                <div class="chart">
-                    {{$maxValue := 0}} {{range .ReviewData}} {{if gt .Value
-                    $maxValue}} {{$maxValue = .Value}} {{end}} {{end}} {{range
-                    .ReviewData}} {{$barHeight := printf "%.2f" (div (mul
-                    (float64 .Value) 100) (float64 $maxValue))}}
-                    <div class="bar" style="height: {{$barHeight}}%;">
-                        <span class="bar-label">{{.Value}}</span>
-                    </div>
+                {{$maxValue := 0.0}}
+                {{range .ReviewData}}
+                    {{if gt (float64 .Value) $maxValue}}
+                        {{$maxValue = float64 .Value}}
                     {{end}}
+                {{end}}
+                <div class="chart">
+                    <div class="y-axis-labels">
+                        <span>{{printf "%.0f" $maxValue}}</span>
+                        <span>{{printf "%.0f" (div $maxValue 4)}}</span>
+                        <span>{{printf "%.0f" (div (mul $maxValue 2) 4)}}</span>
+                        <span>{{printf "%.0f" (div (mul $maxValue 3) 4)}}</span>
+                        <span>0</span>
+                    </div>
+                    <div class="bar-container">
+                        {{range $index, $element := .ReviewData}}
+                            {{$barHeight := printf "%.2f" (div (mul (float64 .Value) 100) $maxValue)}}
+                            <div class="bar" style="height: {{$barHeight}}%;" title="{{.Date.Format "2006-01-02"}}">
+                                <!--<span class="bar-label">{{.Value}}</span>-->
+                            </div>
+                        {{end}}
+                    </div>
                 </div>
+
                 <div class="date-label">
-                    {{range $index, $element := .ReviewData}} {{if eq (mod
-                    $index 10) 0}} {{.Date.Format "2006-01-02"}} {{else}}
-                    {{end}} {{end}}
+                    {{range $index, $element := .ReviewData}}
+                    <span>{{if eq (mod $index 10) 0}}{{.Date.Format "2006-01-02"}}{{end}}</span>
+                    {{end}}
                 </div>
             </div>
 
