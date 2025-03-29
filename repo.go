@@ -78,7 +78,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 	reviewsByGame, err := db.Preparex(`
 		SELECT r.id, r.product_id, r.rating_value, r.title, r.description, r.language,
-		       r.reviewer_username, r.counters_games, r.counters_reviews, r.labels, 
+		       r.reviewer_username, r.counters_games, r.counters_reviews, r.labels,
 		       r.downvotes, r.upvotes, r.review_date, r.creation_date, r.internal_update_date
 		FROM reviews r
 		WHERE r.product_id = (
@@ -96,7 +96,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	}
 	trendingGamesNReviewsTs, err := db.Preparex(`
 	WITH reviews_last_hours AS (
-		SELECT 
+		SELECT
 			product_id,
 			review_date
 		FROM reviews
@@ -119,7 +119,7 @@ func NewRepo(l *slog.Logger) (*GamesRepo, error) {
 	FROM total_reviews tr
 	JOIN games g ON g.id = tr.product_id
 	ORDER BY tr.total_reviews DESC
-	LIMIT $2;	
+	LIMIT $2;
 	`)
 	if err != nil {
 		return nil, err
@@ -189,7 +189,7 @@ max_daily_reviews AS (
            ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY review_count DESC) AS rn
     FROM daily_reviews
 )
-SELECT g.title, 
+SELECT g.title,
 TO_CHAR(mdr.review_date, 'DD-MM-YYYY') AS review_date, TO_CHAR(g.release_date, 'DD-MM-YYYY') AS release_date,
 mdr.review_count AS total_reviews, ROUND(mdr.average_rating, 2) AS rating
 FROM max_daily_reviews mdr
@@ -259,14 +259,14 @@ LIMIT $1;
 	}
 
 	dayWithMostReviews, err := db.Preparex(`
-SELECT 
-    DATE(review_date) AS review_day, 
+SELECT
+    DATE(review_date) AS review_day,
     COUNT(*) AS review_count
-FROM 
+FROM
     reviews
-GROUP BY 
+GROUP BY
     review_day
-ORDER BY 
+ORDER BY
     review_count DESC
 LIMIT 1;
 		`)
@@ -275,14 +275,14 @@ LIMIT 1;
 	}
 
 	gamesPerDeveloper, err := db.Preparex(`
-SELECT 
+SELECT
     UNNEST(developers) AS developer,
     COUNT(*) AS games_count
-FROM 
+FROM
     games
-GROUP BY 
+GROUP BY
     developer
-ORDER BY 
+ORDER BY
     games_count DESC
 LIMIT $1;
 		`)
@@ -343,28 +343,28 @@ unverified_reviews AS (
     WHERE 'verified_owner' <> ANY(r.labels)
     GROUP BY product_id
 )
-SELECT 
+SELECT
     AVG(review_length) AS avg_review_length,
     AVG(avg_rating) AS avg_rating_per_user,
     SUM(total_upvotes) / NULLIF(SUM(total_downvotes), 0) AS upvote_downvote_ratio,
     COALESCE(g.reviews_count, 0) AS total_reviews,  -- Use COALESCE to handle NULL values in reviews_count
     COALESCE(SUM(verified_reviews_count), 0) AS verified_reviews,
     COALESCE(SUM(unverified_reviews_count), 0) AS unverified_reviews
-FROM 
+FROM
     review_data
-LEFT JOIN 
+LEFT JOIN
     review_length ON review_length.reviewer_username = review_data.reviewer_username
-LEFT JOIN 
+LEFT JOIN
     ratings_per_user ON ratings_per_user.reviewer_username = review_data.reviewer_username
-LEFT JOIN 
+LEFT JOIN
     upvote_downvote_ratio ON upvote_downvote_ratio.product_id = review_data.product_id
-LEFT JOIN 
+LEFT JOIN
     verified_reviews ON verified_reviews.product_id = review_data.product_id
-LEFT JOIN 
+LEFT JOIN
     unverified_reviews ON unverified_reviews.product_id = review_data.product_id
-INNER JOIN 
+INNER JOIN
     games g ON g.id = review_data.product_id
-GROUP BY 
+GROUP BY
     g.id;
 `)
 	if err != nil {
@@ -482,9 +482,8 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 		}
 		return 0, err
 	}
-	r.logger.Info("Added reviews", "count", affectedRows, "gameID", reviews[0].ProductID)
-	numNewReviews := int(affectedRows)
 
+	numNewReviews := int(affectedRows)
 	sql, _, err = tx.Update("games").
 		Set(goqu.Record{"reviews_count": goqu.L("reviews_count + ?", affectedRows)}).
 		Where(goqu.Ex{"id": reviews[0].ProductID}).ToSQL()
@@ -500,6 +499,17 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 		return 0, fmt.Errorf("failed to commit final tx: %w", err)
 	}
 
+	// Grab a title for log
+	title := ""
+	_, err = r.db.From("games").
+		Select("title").
+		Where(goqu.Ex{"id": reviews[0].ProductID}).
+		Limit(1).
+		ScanVal(&title)
+	if err != nil {
+		r.logger.Error("Failed to get game", "id", reviews[0].ProductID, "err", err)
+	}
+	r.logger.Info("Added reviews", "count", affectedRows, "title", title)
 	return numNewReviews, nil
 }
 
