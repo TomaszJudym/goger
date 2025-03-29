@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{.Publisher}} - GOGer Publisher</title>
+    <link rel="stylesheet" href="static/styles.css" />
+    <link rel="shortcut icon" href="static/favicon.png" />
+</head>
+
+<body>
+    <div class="container">
+        <h1>{{.Publisher}}</h1>
+
+        <div class="section">
+            <h2>Publisher Statistics</h2>
+            <p><b>Published Games:</b> {{.PublishedGames}}</p>
+            <p><b>Average Rating:</b> {{.AvgRating}}</p>
+            <p><b>Average Price:</b> {{.AvgPrice}}</p>
+            <p><b>Total Reviews:</b> {{.TotalReviews}}</p>
+            <p><b>Average Reviews Rating:</b> {{.AvgReviewsRating}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Game Release Trend Over Time</h2>
+            <div class="chart">
+                <div class="y-axis-labels">
+                    <span>{{printf "%.0f" .MaxReleases}}</span>
+                    <span>{{printf "%.0f" (div .MaxReleases 4)}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxReleases 2) 4)}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxReleases 3) 4)}}</span>
+                    <span>0</span>
+                </div>
+                <div class="bar-container">
+                    {{range $index, $element := .ReleaseTrendData}}
+                    {{$barHeight := printf "%.2f" (div (mul .GameCount 100) $.MaxReleases)}}
+                    <div class="bar" style="height: {{$barHeight}}%;"
+                        title="{{.Year}} - Games Released: {{printf "%.0f" .GameCount}}">
+                    </div>
+                    {{end}}
+                </div>
+                <div class="date-label">
+                    {{range $index, $element := .ReleaseTrendData}}
+                    <span>{{.Year}}</span>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Distribution of Game Ratings</h2>
+            <div class="chart">
+                <div class="y-axis-labels">
+                    <span>{{printf "%.0f" .MaxRatingCount}}</span>
+                    <span>{{printf "%.0f" (div .MaxRatingCount 4)}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxRatingCount 2) 4)}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxRatingCount 3) 4)}}</span>
+                    <span>0</span>
+                </div>
+                <div class="bar-container">
+                    {{range $index, $element := .RatingDistribution}}
+                    {{$barHeight := printf "%.2f" (div (mul .Count 100) $.MaxRatingCount)}}
+                    <div class="bar" style="height: {{$barHeight}}%;"
+                        title="Rating: {{printf "%.0f" .Rating}} - Count: {{printf "%.0f" .Count}}">
+                    </div>
+                    {{end}}
+                </div>
+                <div class="date-label">
+                    {{range $index, $element := .RatingDistribution}}
+                    <span>{{printf "%.0f" .Rating}}</span>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Price Distribution</h2>
+            <div class="chart">
+                <div class="y-axis-labels">
+                    <span>{{printf "%.0f" .MaxPriceCount}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxPriceCount 2) 4)}}</span>
+                    <span>{{printf "%.0f" (div (mul .MaxPriceCount 3) 4)}}</span>
+                    <span>{{printf "%.0f" (div .MaxPriceCount 4)}}</span>
+                    <span>0</span>
+                </div>
+                <div class="bar-container">
+                    {{range $index, $element := .PriceDistribution}}
+                    {{$barHeight := printf "%.2f" (div (mul .Count 100) $.MaxPriceCount)}}
+                    <div class="bar" style="height: {{$barHeight}}%;"
+                        title="Price Range: {{.PriceRange}} - Count: {{printf "%.0f" .Count}}">
+                    </div>
+                    {{end}}
+                </div>
+                <div class="date-label">
+                    {{range $index, $element := .PriceDistribution}}
+                    <span>{{.PriceRange}}</span>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

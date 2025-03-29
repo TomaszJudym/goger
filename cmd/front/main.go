@@ -14,6 +14,24 @@ import (
 
 type timeDate time.Time
 
+var funcMap = template.FuncMap{
+	"div": func(a, b float64) float64 {
+		if b == 0 {
+			return 0 // Handle division by zero
+		}
+		return a / b
+	},
+	"mul": func(a, b float64) float64 {
+		return a * b
+	},
+	"float64": func(i int) float64 {
+		return float64(i)
+	},
+	"mod": func(a, b int) int {
+		return a % b
+	},
+}
+
 // UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
 func (ct *timeDate) UnmarshalJSON(b []byte) error {
 	var s string
@@ -230,6 +248,7 @@ func main() {
 
 	http.HandleFunc("/", dashboardHandler)
 	http.HandleFunc("/game", GameHandler(db))
+	http.HandleFunc("/publisher", PublisherHandler(db))
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -303,23 +322,6 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		data.ReviewData = aggregatedData
 	}
 
-	funcMap := template.FuncMap{
-		"div": func(a, b float64) float64 {
-			if b == 0 {
-				return 0 // Handle division by zero
-			}
-			return a / b
-		},
-		"mul": func(a, b float64) float64 {
-			return a * b
-		},
-		"float64": func(i int) float64 {
-			return float64(i)
-		},
-		"mod": func(a, b int) int {
-			return a % b
-		},
-	}
 	tmpl := template.New("dashboard.html").Funcs(funcMap)
 	tmpl, err = tmpl.ParseFiles("templates/dashboard.html")
 

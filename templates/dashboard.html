@@ -22,9 +22,9 @@
                 <div class="chart">
                     <div class="y-axis-labels">
                         <span>{{printf "%.0f" $maxValue}}</span>
-                        <span>{{printf "%.0f" (div $maxValue 4)}}</span>
-                        <span>{{printf "%.0f" (div (mul $maxValue 2) 4)}}</span>
                         <span>{{printf "%.0f" (div (mul $maxValue 3) 4)}}</span>
+                        <span>{{printf "%.0f" (div (mul $maxValue 2) 4)}}</span>
+                        <span>{{printf "%.0f" (div $maxValue 4)}}</span>
                         <span>0</span>
                     </div>
                     <div class="bar-container">
@@ -114,7 +114,7 @@
                     <tbody>
                         {{range .TopPublishers}}
                         <tr>
-                            <td>{{.Publisher}}</td>
+                            <td><a href="/publisher?name={{.Publisher}}">{{.Publisher}}</a></td>
                             <td>{{.AvgRating}}</td>
                             <td>{{.PublishedGames}}</td>
                         </tr>
