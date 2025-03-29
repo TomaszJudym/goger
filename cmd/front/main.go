@@ -12,47 +12,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// timeCustom is a type alias for time.Time with custom JSON unmarshaling.
-type timeCustom time.Time
-
-// UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
-func (ct *timeCustom) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-
-	// Add "Z" if no timezone is present, assuming UTC.
-	if len(s) == 19 || len(s) == 26 {
-		s += "Z"
-	}
-
-	formats := []string{
-		time.RFC3339,
-		"2006-01-02T15:04:05.999999",
-		"2006-01-02T15:04:05.999999999", // Add nanosecond precision
-	}
-
-	var t time.Time
-	var err error
-	for _, format := range formats {
-		t, err = time.Parse(format, s)
-		if err == nil {
-			break // Successfully parsed
-		}
-	}
-	if err != nil {
-		return fmt.Errorf("failed to parse to any supported format: %w", err)
-	}
-
-	*ct = timeCustom(t)
-	return nil
-}
-
-func (t timeCustom) String() string {
-	return time.Time(t).Format(time.RFC3339)
-}
-
 type timeDate time.Time
 
 // UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
@@ -61,12 +20,27 @@ func (ct *timeDate) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
-
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		return err
+	formats := []string{
+		"2006-01-02",
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05+00:00",
+		"2006/01/02",
+		"2006-01-02T15:04:05.999999999",
 	}
 
+	var t time.Time
+	var err error
+	for _, format := range formats {
+		t, err = time.Parse(format, s)
+		if err == nil {
+			break // Something clicked
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to parse time string '%s' with any of the formats: %v", s, formats)
+	}
 	*ct = timeDate(t)
 	return nil
 }
@@ -90,7 +64,7 @@ type GameStatistics struct {
 	MostReviewedGames    MostReviewedGames    `db:"most_reviewed_games"`
 	HighestRatedGames    HighestRatedGames    `db:"highest_rated_games"`
 	RecentlyUpdatedGames RecentlyUpdatedGames `db:"recently_updated_games"`
-	ViewRefreshTime      timeCustom           `db:"view_refresh_time"`
+	ViewRefreshTime      timeDate             `db:"view_refresh_time"`
 	ReviewData           []DataPoint          // Data for the bar chart
 }
 
@@ -184,9 +158,9 @@ func (t *TopDevelopers) Scan(src any) error {
 
 // ReleaseTrends represents the release trends.
 type ReleaseTrends []struct {
-	Month         timeCustom `json:"month"`
-	GamesReleased int        `json:"games_released"`
-	AvgRating     float64    `json:"avg_rating"`
+	Month         timeDate `json:"month"`
+	GamesReleased int      `json:"games_released"`
+	AvgRating     float64  `json:"avg_rating"`
 }
 
 // Scan implements the sql.Scanner interface for ReleaseTrends.
@@ -224,9 +198,9 @@ func (h *HighestRatedGames) Scan(src any) error {
 
 // RecentlyUpdatedGames represents the recently updated games.
 type RecentlyUpdatedGames []struct {
-	Id        int        `json:"id"`
-	Title     string     `json:"title"`
-	UpdatedAt timeCustom `json:"updated_at"`
+	Id        int      `json:"id"`
+	Title     string   `json:"title"`
+	UpdatedAt timeDate `json:"updated_at"`
 }
 
 // Scan implements the sql.Scanner interface for RecentlyUpdatedGames.
@@ -276,7 +250,6 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to get reviews data: %v", err), http.StatusInternalServerError)
 		return
 	}
-	//data.SvgData = template.HTML(svgBuff.String())
 
 	// Aggregate data if we have > 100 data points
 	if len(data.ReviewData) > 100 {
