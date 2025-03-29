@@ -1,107 +1,234 @@
 body {
-  white-space: pre-wrap;
-  font-family: monospace;
-  margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: 100vh;
-  background-color: #f9f9f9;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    background-color: #1a1a2e;
+    color: #e0e0f8;
+    line-height: 1.6;
 }
 
-.middle-container {
-  text-align: left;
-  width: 100%;
-  max-width: 1200px;
-  padding: 0 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
 }
 
 h1,
-h3,
-h4 {
-  text-align: center;
-}
-
-.content-row {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-
-.grid-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-  width: 100%;
-}
-
-.grid-item {
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  padding: 10px;
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  width: 200px;
-}
-
-.key {
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-
-.value {
-  color: #555;
-}
-
-.colorful-link {
-  color: #ebe6da;
-  text-decoration: none;
-  font-weight: bold;
-}
-
-.colorful-link:hover {
-  text-decoration: underline;
+h2 {
+    color: #b39ddb;
+    text-align: center;
+    margin-bottom: 20px;
 }
 
 table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 5px;
-  margin-bottom: 10px;
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+    background-color: #282846;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-table th,
-table td {
-  padding: 5px;
-  text-align: left;
+th,
+td {
+    border: 1px solid #373763;
+    padding: 12px 15px;
+    text-align: left;
 }
 
-table th {
-  font-weight: bold;
-  border-bottom: 1px solid #ddd;
+th {
+    background-color: #322f5a;
+    font-weight: 600;
 }
 
-table td {
-  border-bottom: 1px solid #f5f5f5;
+.section {
+    background-color: #282846;
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
 }
 
-table .title {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.list-items {
+    list-style-type: none;
+    padding-left: 0;
 }
 
-.footer {
-  text-align: center;
-  margin-top: 20px;
-  color: #888;
+.list-items li {
+    margin-bottom: 10px;
+    padding: 10px 15px;
+    background-color: #322f5a;
+    border-radius: 5px;
+}
+
+.price-statistics {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.price-statistics div {
+    flex: 1 1 300px;
+    border: 1px solid #373763;
+    padding: 20px;
+    margin: 10px;
+    background-color: #322f5a;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.price-statistics div p {
+    margin: 5px 0;
+}
+
+table tr:hover {
+    background-color: #373763;
+}
+
+.list-items li:hover {
+    background-color: #373763;
+}
+
+.price-statistics div:hover {
+    background-color: #373763;
+}
+
+.section:hover {
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+.section p {
+    font-size: 1.1em;
+    text-align: center;
+}
+
+/* CSS for the bar chart */
+.chart {
+    width: 100%;
+    height: 300px;
+    display: flex;
+    align-items: stretch;
+    /* Make sure bars stretch to height */
+    padding: 10px 0;
+    position: relative;
+    /* Needed for absolute positioning of labels */
+}
+
+.y-axis-labels {
+    width: 50px;
+    /* Adjust as needed */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-right: 5px;
+    /* Spacing between labels and bars */
+    color: #ccc;
+    font-size: 0.8em;
+}
+
+.bar-container {
+    flex: 1;
+    /* Take up remaining space */
+    display: flex;
+    align-items: flex-end;
+}
+
+.bar {
+    flex: 1;
+    background-color: steelblue;
+    margin: 0 2px;
+    position: relative;
+}
+
+.bar-label {
+    /* Removed top positioning and display properties */
+}
+
+.date-label {
+    text-align: center;
+    margin-top: 5px;
+    display: flex;
+    justify-content: space-around;
+    /* Distribute labels evenly */
+}
+
+.date-label span {
+    visibility: hidden;
+    /* Hide all labels by default */
+}
+
+.date-label span:nth-child(10n + 1) {
+    visibility: visible;
+    /* Show every 10th label */
+}
+
+.screenshot-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    /* Distribute items evenly */
+}
+
+.screenshot-container {
+    width: 200px;
+    /* Adjust as needed */
+    height: 150px;
+    /* Adjust as needed */
+    margin: 10px;
+    /* Spacing around each image */
+    overflow: hidden;
+    /* Clip images to fit the container */
+    border-radius: 8px;
+    /* Rounded corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    /* Subtle shadow */
+    position: relative;
+    /* For positioning the fallback text */
+}
+
+.screenshot-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Ensure images fill the container */
+    display: block;
+    /* Remove extra space below image */
+}
+
+/* Add a max-width to the chart to prevent it from expanding too much */
+.chart {
+    max-width: 100%;
+    /* Adjust this value as needed */
+    width: 100%;
+    height: 300px;
+    display: flex;
+    align-items: stretch;
+    /* Make sure bars stretch to height */
+    padding: 10px 0;
+    position: relative;
+    /* Needed for absolute positioning of labels */
+    overflow: hidden;
+    /* prevent chart from overflowing its container */
+}
+
+.upvote {
+    background-color: steelblue;
+    margin: 0 2px;
+    position: relative;
+}
+
+.downvote {
+    background-color: red;
+    margin: 0 2px;
+    position: relative;
+}
+
+a {
+    color: #d3d3d3; /* Light gray color */
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
 }

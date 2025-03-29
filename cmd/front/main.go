@@ -230,6 +230,7 @@ func main() {
 
 	http.HandleFunc("/", dashboardHandler)
 	http.HandleFunc("/game", GameHandler(db))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
