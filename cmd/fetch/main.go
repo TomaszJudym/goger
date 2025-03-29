@@ -174,7 +174,6 @@ func fetchGames(page, count int) (goger.CatalogResp, error) {
 	return resp, nil
 }
 
-// TODO: Looks like it's hanging or at least not downloading reviews.
 // Deadlock? Channels stuck? Add context with timeout.
 func (r *reviewer) download(title, gameID string) error {
 	// Every response contains total review count.

@@ -14,11 +14,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// timeRFC3339 is a type alias for time.Time with custom JSON unmarshaling.
-type timeRFC3339 time.Time
+// timeCustom is a type alias for time.Time with custom JSON unmarshaling.
+type timeCustom time.Time
 
 // UnmarshalJSON implements custom JSON unmarshaling for CustomTime.
-func (ct *timeRFC3339) UnmarshalJSON(b []byte) error {
+func (ct *timeCustom) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -29,16 +29,29 @@ func (ct *timeRFC3339) UnmarshalJSON(b []byte) error {
 		s += "Z"
 	}
 
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return err
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999",
+		"2006-01-02T15:04:05.999999999", // Add nanosecond precision
 	}
 
-	*ct = timeRFC3339(t)
+	var t time.Time
+	var err error
+	for _, format := range formats {
+		t, err = time.Parse(format, s)
+		if err == nil {
+			break // Successfully parsed
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to parse to any supported format: %w", err)
+	}
+
+	*ct = timeCustom(t)
 	return nil
 }
 
-func (t timeRFC3339) String() string {
+func (t timeCustom) String() string {
 	return time.Time(t).Format(time.RFC3339)
 }
 
@@ -79,7 +92,7 @@ type GameStatistics struct {
 	MostReviewedGames    MostReviewedGames    `db:"most_reviewed_games"`
 	HighestRatedGames    HighestRatedGames    `db:"highest_rated_games"`
 	RecentlyUpdatedGames RecentlyUpdatedGames `db:"recently_updated_games"`
-	ViewRefreshTime      timeRFC3339          `db:"view_refresh_time"`
+	ViewRefreshTime      timeCustom           `db:"view_refresh_time"`
 	SvgData              template.HTML
 }
 
@@ -173,9 +186,9 @@ func (t *TopDevelopers) Scan(src any) error {
 
 // ReleaseTrends represents the release trends.
 type ReleaseTrends []struct {
-	Month         timeRFC3339 `json:"month"`
-	GamesReleased int         `json:"games_released"`
-	AvgRating     float64     `json:"avg_rating"`
+	Month         timeCustom `json:"month"`
+	GamesReleased int        `json:"games_released"`
+	AvgRating     float64    `json:"avg_rating"`
 }
 
 // Scan implements the sql.Scanner interface for ReleaseTrends.
@@ -213,9 +226,9 @@ func (h *HighestRatedGames) Scan(src any) error {
 
 // RecentlyUpdatedGames represents the recently updated games.
 type RecentlyUpdatedGames []struct {
-	Id        int         `json:"id"`
-	Title     string      `json:"title"`
-	UpdatedAt timeRFC3339 `json:"updated_at"`
+	Id        int        `json:"id"`
+	Title     string     `json:"title"`
+	UpdatedAt timeCustom `json:"updated_at"`
 }
 
 // Scan implements the sql.Scanner interface for RecentlyUpdatedGames.
@@ -328,13 +341,38 @@ func reviewData(db *sqlx.DB) ([]DataPoint, error) {
 
 func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
 	const (
-		chartWidth  = 600
+		chartWidth  = 1200
 		chartHeight = 400
 	)
-	// TODO: Make graph fit page width.
-	// Don't display all dates on X axis
+	// Aggregate data if we have > 100 data points
 	if len(data) > 100 {
-		data = data[:100]
+		// Aggregate the data to fit 100 points
+		aggregatedData := make([]DataPoint, 100)
+		binSize := len(data) / 100
+
+		for i := 0; i < 100; i++ {
+			startIndex := i * binSize
+			endIndex := (i + 1) * binSize
+			if i == 99 {
+				endIndex = len(data) // Make sure to include all remaining data in the last bin
+			}
+
+			totalReviews := 0
+			for j := startIndex; j < endIndex; j++ {
+				totalReviews += data[j].Value
+			}
+
+			// Calculate the average date for the bin
+			var totalTime time.Time
+			for j := startIndex; j < endIndex; j++ {
+				totalTime = totalTime.Add(data[j].Date.Sub(time.Time{}))
+			}
+			aggregatedData[i] = DataPoint{
+				Date:  data[startIndex].Date,
+				Value: totalReviews,
+			}
+		}
+		data = aggregatedData
 	}
 
 	var buf bytes.Buffer
@@ -342,7 +380,7 @@ func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
 	canvas.Start(chartWidth, chartHeight)
 
 	// Background color
-	backgroundColor := "rgb(20, 0, 40)"
+	backgroundColor := "#1a1a2e"
 	canvas.Rect(0, 0, chartWidth, chartHeight, fmt.Sprintf("fill:%s", backgroundColor))
 
 	// Axis color
@@ -368,7 +406,7 @@ func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
 			}
 		}
 
-		lineColor := "rgb(153, 50, 204)" // Light purple lines
+		lineColor := "rgb(169,169,169)" // Dark gray lines
 		lineWidth := 2
 
 		// Calculate scaling factors
@@ -379,8 +417,14 @@ func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
 			x := int(float64(i)*xScale) + axisMargin
 			y := chartHeight - axisMargin - int(float64(dp.Value)*yScale)
 
-			canvas.Line(x, chartHeight-axisMargin, x, y, fmt.Sprintf("stroke:%s; stroke-width:%d", lineColor, lineWidth))                            // Draw vertical lines
-			canvas.Text(x, chartHeight-axisMargin+15, dp.Date.Format("01-02"), fmt.Sprintf("fill:%s; text-anchor:middle; font-size:8px", axisColor)) // Add date labels
+			canvas.Line(x, chartHeight-axisMargin, x, y, fmt.Sprintf("stroke:%s; stroke-width:%d", lineColor, lineWidth))
+			dateLabel := dp.Date.Format("01-02")
+			// Don't put date for every record because it'll overlap.
+			// Display every 10th date.
+			if i%10 != 0 {
+				dateLabel = ""
+			}
+			canvas.Text(x, chartHeight-axisMargin+15, dateLabel, fmt.Sprintf("fill:%s; text-anchor:middle; font-size:8px", axisColor))
 		}
 	}
 
