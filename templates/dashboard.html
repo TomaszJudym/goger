@@ -179,8 +179,8 @@
                 <h2>Reviews</h2>
                 {{$maxValue := 0.0}}
                 {{range .ReviewData}}
-                    {{if gt (float64 .Value) $maxValue}}
-                        {{$maxValue = float64 .Value}}
+                    {{if gt  .Value $maxValue}}
+                        {{$maxValue = .Value}}
                     {{end}}
                 {{end}}
                 <div class="chart">
@@ -193,8 +193,8 @@
                     </div>
                     <div class="bar-container">
                         {{range $index, $element := .ReviewData}}
-                            {{$barHeight := printf "%.2f" (div (mul (float64 .Value) 100) $maxValue)}}
-                            <div class="bar" style="height: {{$barHeight}}%;" title="{{.Date.Format "2006-01-02"}}">
+                            {{$barHeight := printf "%.2f" (div (mul .Value 100) $maxValue)}}
+                            <div class="bar" style="height: {{$barHeight}}%;" title="{{.Date.Format "2006-01-02"}} - Count: {{.Value}}">
                                 <!--<span class="bar-label">{{.Value}}</span>-->
                             </div>
                         {{end}}
