@@ -413,6 +413,17 @@ func newSVGChart(data []DataPoint) (*bytes.Buffer, error) {
 		xScale := float64(chartWidth-2*axisMargin) / float64(len(data)-1)
 		yScale := float64(chartHeight-2*axisMargin) / float64(maxValue)
 
+		// Add Y-axis labels
+		numYLabels := 5 // Number of labels on the Y-axis
+		yLabelInterval := maxValue / numYLabels
+
+		for j := 0; j <= numYLabels; j++ {
+			yValue := j * yLabelInterval
+			y := chartHeight - axisMargin - int(float64(yValue)*yScale)
+
+			canvas.Text(axisX-5, y+3, fmt.Sprintf("%d", yValue), fmt.Sprintf("fill:%s; text-anchor:end; font-size:8px", axisColor))
+		}
+
 		for i, dp := range data {
 			x := int(float64(i)*xScale) + axisMargin
 			y := chartHeight - axisMargin - int(float64(dp.Value)*yScale)

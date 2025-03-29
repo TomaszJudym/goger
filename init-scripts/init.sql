@@ -49,7 +49,7 @@ CLUSTER games USING idx_reviews_count;
 CREATE TABLE IF NOT EXISTS last_run (
     -- just for usage with ON CONFLICT to overwite it.
     -- table should have only single record to track last run time
-    onerow_id BOOL PRIMARY KEY DEFAULT true, 
+    onerow_id BOOL PRIMARY KEY DEFAULT true,
     ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
     CONSTRAINT onerow_uni CHECK (onerow_id)
 );
@@ -227,13 +227,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- Create a materialized view for better performance with periodic updates
 CREATE MATERIALIZED VIEW game_statistics AS
 WITH review_stats AS (
     SELECT
         product_id,
         COUNT(*) AS total_reviews,
-        AVG(rating_value) AS avg_rating,
+        ROUND(AVG(rating_value)::numeric, 2) AS avg_rating,
         COUNT(CASE WHEN rating_value >= 4 THEN 1 END) AS positive_reviews,
         COUNT(CASE WHEN rating_value <= 2 THEN 1 END) AS negative_reviews,
         MAX(review_date) AS latest_review_date,
@@ -247,10 +248,10 @@ WITH review_stats AS (
 price_stats AS (
     SELECT
         price_currency,
-        AVG(price_final) AS avg_price,
+        ROUND(AVG(price_final)::numeric, 2) AS avg_price,
         MIN(price_final) AS min_price,
         MAX(price_final) AS max_price,
-        AVG(price_discount) AS avg_discount,
+        ROUND(AVG(price_discount)::numeric, 2) AS avg_discount,
         COUNT(CASE WHEN price_discount > 0 THEN 1 END) AS games_on_sale,
         COUNT(*) AS total_games_in_currency
     FROM games
@@ -261,8 +262,8 @@ genre_stats AS (
     SELECT
         unnest(genres) AS genre,
         COUNT(*) AS game_count,
-        AVG(reviews_rating) AS avg_genre_rating,
-        AVG(price_final) AS avg_genre_price
+        ROUND(AVG(reviews_rating)::numeric, 2) AS avg_genre_rating,
+        ROUND(AVG(price_final)::numeric, 2) AS avg_genre_price
     FROM games
     GROUP BY genre
 ),
@@ -286,7 +287,7 @@ publisher_stats AS (
     SELECT
         unnest(publishers) AS publisher,
         COUNT(*) AS published_games,
-        AVG(reviews_rating) AS avg_publisher_rating
+        ROUND(AVG(reviews_rating)::numeric, 2) AS avg_publisher_rating
     FROM games
     GROUP BY publisher
 ),
@@ -294,7 +295,7 @@ developer_stats AS (
     SELECT
         unnest(developers) AS developer,
         COUNT(*) AS developed_games,
-        AVG(reviews_rating) AS avg_developer_rating
+        ROUND(AVG(reviews_rating)::numeric, 2) AS avg_developer_rating
     FROM games
     GROUP BY developer
 ),
@@ -302,7 +303,7 @@ time_stats AS (
     SELECT
         date_trunc('month', release_date) AS release_month,
         COUNT(*) AS games_released,
-        AVG(reviews_rating) AS avg_monthly_rating
+        ROUND(AVG(reviews_rating)::numeric, 2) AS avg_monthly_rating
     FROM games
     GROUP BY release_month
     ORDER BY release_month
@@ -311,9 +312,9 @@ SELECT
     -- General statistics
     (SELECT COUNT(*) FROM games) AS total_games,
     (SELECT COUNT(*) FROM reviews) AS total_reviews,
-    (SELECT AVG(reviews_rating) FROM games) AS avg_game_rating,
+    ROUND((SELECT AVG(reviews_rating) FROM games)::numeric, 2) AS avg_game_rating,
     (SELECT COUNT(*) FROM games WHERE reviews_count > 0) AS games_with_reviews,
-    
+
     -- Price statistics by currency
     (SELECT json_agg(jsonb_build_object(
         'currency', p.price_currency,
@@ -324,7 +325,7 @@ SELECT
         'games_on_sale', p.games_on_sale,
         'total_games', p.total_games_in_currency
     )) FROM price_stats p) AS price_statistics,
-    
+
     -- Top genres
     (SELECT json_agg(jsonb_build_object(
         'genre', genre,
@@ -333,13 +334,13 @@ SELECT
         'avg_price', avg_genre_price
     ))
     FROM (SELECT * FROM genre_stats ORDER BY game_count DESC LIMIT 10) AS top_genres) AS top_genres,
-    
+
     -- Operating system distribution
     (SELECT json_agg(jsonb_build_object(
         'os', o.os,
         'game_count', o.game_count
     )) FROM os_stats o) AS os_distribution,
-    
+
     -- Top publishers
     (SELECT json_agg(jsonb_build_object(
         'publisher', publisher,
@@ -347,7 +348,7 @@ SELECT
         'avg_rating', avg_publisher_rating
     ))
     FROM (SELECT * FROM publisher_stats ORDER BY published_games DESC LIMIT 10) AS top_pubs) AS top_publishers,
-    
+
     -- Top developers
     (SELECT json_agg(jsonb_build_object(
         'developer', developer,
@@ -355,7 +356,7 @@ SELECT
         'avg_rating', avg_developer_rating
     ))
     FROM (SELECT * FROM developer_stats ORDER BY developed_games DESC LIMIT 10) AS top_devs) AS top_developers,
-    
+
     -- Release trends
     (SELECT json_agg(jsonb_build_object(
         'month', release_month,
@@ -363,7 +364,7 @@ SELECT
         'avg_rating', avg_monthly_rating
     ))
     FROM (SELECT * FROM time_stats ORDER BY release_month DESC LIMIT 24) AS recent_months) AS release_trends,
-    
+
     -- Games with most reviews
     (SELECT json_agg(jsonb_build_object(
         'id', id,
@@ -372,10 +373,10 @@ SELECT
         'rating', reviews_rating,
         'release_date', release_date
     ))
-    FROM (SELECT id, title, reviews_count, reviews_rating, release_date 
-          FROM games 
+    FROM (SELECT id, title, reviews_count, reviews_rating, release_date
+          FROM games
           ORDER BY reviews_count DESC LIMIT 10) AS most_reviewed) AS most_reviewed_games,
-    
+
     -- Highest rated games
     (SELECT json_agg(jsonb_build_object(
         'id', id,
@@ -384,24 +385,23 @@ SELECT
         'rating', reviews_rating,
         'release_date', release_date
     ))
-    FROM (SELECT id, title, reviews_count, reviews_rating, release_date 
-          FROM games 
+    FROM (SELECT id, title, reviews_count, reviews_rating, release_date
+          FROM games
           WHERE reviews_count > 10 -- Minimum threshold to avoid games with few reviews
           ORDER BY reviews_rating DESC LIMIT 10) AS top_rated) AS highest_rated_games,
-    
+
     -- Latest updated
     (SELECT json_agg(jsonb_build_object(
         'id', id,
         'title', title,
         'updated_at', updated_at
     ))
-    FROM (SELECT id, title, updated_at 
-          FROM games 
+    FROM (SELECT id, title, updated_at
+          FROM games
           ORDER BY updated_at DESC NULLS LAST LIMIT 10) AS latest) AS recently_updated_games,
-    
+
     now() AS view_refresh_time
 ;
-
 -- Create an index on the materialized view for faster queries
 CREATE UNIQUE INDEX ON game_statistics (view_refresh_time);
 
