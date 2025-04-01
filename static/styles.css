@@ -158,9 +158,16 @@ table tr:hover {
     /* Hide all labels by default */
 }
 
-.date-label span:nth-child(10n + 1) {
+.date-label span:nth-child(5n + 1) {
     visibility: visible;
     /* Show every 10th label */
+}
+
+.price-dist-label {
+    text-align: center;
+    margin-top: 5px;
+    display: flex;
+    justify-content: space-around;
 }
 
 .screenshot-grid {

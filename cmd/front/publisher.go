@@ -117,33 +117,32 @@ func PublisherHandler(db *sqlx.DB) http.HandlerFunc {
 func getPublisherData(db *sqlx.DB, publisherName string) (PublisherStatistics, error) {
 	var publisherData PublisherStatistics
 
-	// Make sure to use same SQL queries to get consistent data
 	err := db.Get(&publisherData, `
 		SELECT
-			publisher,
-			published_games,
-			avg_publisher_rating,
-			COALESCE(avg_genre_price, 0) AS avg_price,
-			COALESCE(total_reviews, 0) AS total_reviews,
-			COALESCE(avg_genre_rating, 0) AS avg_reviews_rating
-		FROM (
-			SELECT
-				unnest(publishers) AS publisher,
-				COUNT(*) AS published_games,
-				ROUND(AVG(reviews_rating)::numeric, 2) AS avg_publisher_rating
-			FROM games
-			WHERE $1 = ANY(publishers)
-			GROUP BY publisher
-		) AS publisher_stats
-		LEFT JOIN (
-			SELECT
-				AVG(price_final) AS avg_genre_price,
-				AVG(reviews_rating) AS avg_genre_rating,
-				COUNT(*) AS total_reviews
-			FROM games
-			JOIN reviews ON games.id = reviews.product_id
-			WHERE $1 = ANY(publishers)
-		) AS price_review_stats ON TRUE;
+		publisher,
+		published_games,
+		avg_publisher_rating,
+		COALESCE(ROUND(avg_genre_price::numeric, 2), 0) AS avg_price,
+		COALESCE(total_reviews, 0) AS total_reviews,
+		COALESCE(ROUND(avg_genre_rating::numeric, 2), 0) AS avg_reviews_rating
+	FROM (
+		SELECT
+			unnest(publishers) AS publisher,
+			COUNT(*) AS published_games,
+			ROUND(AVG(reviews_rating)::numeric, 2) AS avg_publisher_rating
+		FROM games
+		WHERE $1 = ANY(publishers)
+		GROUP BY publisher
+	) AS publisher_stats
+	LEFT JOIN (
+		SELECT
+			AVG(price_final) AS avg_genre_price,
+			AVG(reviews_rating) AS avg_genre_rating,
+			COUNT(*) AS total_reviews
+		FROM games
+		JOIN reviews ON games.id = reviews.product_id
+		WHERE $1 = ANY(publishers)
+	) AS price_review_stats ON TRUE;
 	`, publisherName)
 	if err != nil {
 		return PublisherStatistics{}, err
@@ -192,19 +191,42 @@ func getRatingDistribution(db *sqlx.DB, publisherName string) ([]RatingDistribut
 func getPriceDistribution(db *sqlx.DB, publisherName string) ([]PriceDistribution, error) {
 	var data []PriceDistribution
 	err := db.Select(&data, `
-	SELECT
-    CASE
-        WHEN price_final < 10 THEN 'Under $10'
-        WHEN price_final >= 10 AND price_final < 20 THEN '$10 - $20'
-        WHEN price_final >= 20 AND price_final < 30 THEN '$20 - $30'
-        ELSE 'Over $30'
-    END AS price_range,
-    COUNT(*) AS game_count
-		FROM games
-		WHERE $1 = ANY(publishers)
-		GROUP BY price_range
-		ORDER BY price_range;
-	`, publisherName)
+		SELECT price_range, game_count
+        FROM (
+            SELECT
+                CASE
+                    WHEN price_final < 5 THEN 'Under $5'
+                    WHEN price_final >= 5 AND price_final < 10 THEN '$5 - $10'
+                    WHEN price_final >= 10 AND price_final < 15 THEN '$10 - $15'
+                    WHEN price_final >= 15 AND price_final < 20 THEN '$15 - $20'
+                    WHEN price_final >= 20 AND price_final < 25 THEN '$20 - $25'
+                    WHEN price_final >= 25 AND price_final < 30 THEN '$25 - $30'
+                    WHEN price_final >= 30 AND price_final < 35 THEN '$30 - $35'
+                    WHEN price_final >= 35 AND price_final < 40 THEN '$35 - $40'
+                    WHEN price_final >= 40 AND price_final < 45 THEN '$40 - $45'
+                    WHEN price_final >= 45 AND price_final < 50 THEN '$45 - $50'
+                    ELSE 'Over $50'
+                END AS price_range,
+                COUNT(*) AS game_count,
+                CASE
+                    WHEN price_final < 5 THEN 1
+                    WHEN price_final >= 5 AND price_final < 10 THEN 2
+                    WHEN price_final >= 10 AND price_final < 15 THEN 3
+                    WHEN price_final >= 15 AND price_final < 20 THEN 4
+                    WHEN price_final >= 20 AND price_final < 25 THEN 5
+                    WHEN price_final >= 25 AND price_final < 30 THEN 6
+                    WHEN price_final >= 30 AND price_final < 35 THEN 7
+                    WHEN price_final >= 35 AND price_final < 40 THEN 8
+                    WHEN price_final >= 40 AND price_final < 45 THEN 9
+                    WHEN price_final >= 45 AND price_final < 50 THEN 10
+                    ELSE 11
+                END AS sort_order
+            FROM games
+            WHERE $1 = ANY(publishers)
+            GROUP BY price_range, sort_order
+        ) AS subquery
+        ORDER BY sort_order;
+    `, publisherName)
 	if err != nil {
 		return nil, err
 	}

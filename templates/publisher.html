@@ -39,11 +39,11 @@
                     </div>
                     {{end}}
                 </div>
-                <div class="date-label">
-                    {{range $index, $element := .ReleaseTrendData}}
-                    <span>{{.Year}}</span>
-                    {{end}}
-                </div>
+            </div>
+            <div class="date-label">
+                {{range $index, $element := .ReleaseTrendData}}
+                <span>{{.Year}}</span>
+                {{end}}
             </div>
         </div>
 
@@ -64,11 +64,11 @@
                     </div>
                     {{end}}
                 </div>
-                <div class="date-label">
-                    {{range $index, $element := .RatingDistribution}}
-                    <span>{{printf "%.0f" .Rating}}</span>
-                    {{end}}
-                </div>
+            </div>
+            <div class="date-label">
+                {{range $index, $element := .RatingDistribution}}
+                <span>{{printf "%.0f" .Rating}}</span>
+                {{end}}
             </div>
         </div>
 
@@ -89,11 +89,11 @@
                     </div>
                     {{end}}
                 </div>
-                <div class="date-label">
-                    {{range $index, $element := .PriceDistribution}}
-                    <span>{{.PriceRange}}</span>
-                    {{end}}
-                </div>
+            </div>
+            <div class="price-dist-label">
+                {{range $index, $element := .PriceDistribution}}
+                <span>{{.PriceRange}}</span>
+                {{end}}
             </div>
         </div>
     </div>
