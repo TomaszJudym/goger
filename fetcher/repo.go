@@ -155,7 +155,7 @@ func (r *GamesRepo) CreateReviews(reviews []ReviewRepo) (int, error) {
 	if err != nil {
 		r.logger.Error("Failed to get game", "id", reviews[0].ProductID, "err", err)
 	}
-	r.logger.Info("Added reviews", "count", affectedRows, "title", title)
+	r.logger.Debug("Inserted reviews", "count", affectedRows, "title", title)
 	return numNewReviews, nil
 }
 

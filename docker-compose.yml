@@ -1,12 +1,11 @@
 services:
   postgres:
     image: postgres:17.4-bookworm
-    #command: -c config_file=/etc/postgresql.conf
     container_name: pg
     deploy:
       resources:
         limits:
-          cpus: '3'
+          cpus: '2'
     environment:
       PGUSER: goger
       POSTGRES_DB: goger
@@ -29,41 +28,13 @@ services:
 
   fetcher:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ./fetcher
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - db-network
-
-  nginx:
-    image: nginx:bookworm
-    ports:
-      - "80:80"
-    depends_on:
-      - fronter
-    networks:
-      - nginx-network
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - nginx_logs:/var/log/nginx
-
-  fronter:
-    build:
-      context: .
-      dockerfile: Dockerfile-front
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - db-network
-      - nginx-network
 
 networks:
   db-network:
-  nginx-network:
-
-volumes:
-  nginx_logs:
 

@@ -251,7 +251,6 @@ func (r *reviewer) download(title, gameID string) error {
 				return fmt.Errorf("failed to insert %d reviews of: %s to db: %w",
 					len(reviews), title, err)
 			}
-			l.Debug("page of written")
 		}
 		return nil
 	})
@@ -259,7 +258,7 @@ func (r *reviewer) download(title, gameID string) error {
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("failed to download reviews: %w", err)
 	}
-	l.Debug("downloaded", "revsCount", onPage, "took", time.Since(start))
+	l.Info("downloaded", "revsCount", onPage, "took", time.Since(start), "title", title, "gameID", gameID)
 
 	return nil
 }

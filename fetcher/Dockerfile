@@ -1,4 +1,4 @@
-FROM golang:1.21.3-alpine3.18 AS binary-builder
+FROM golang:1.24.2-alpine AS binary-builder
 RUN apk update && apk upgrade
 # && apk --update add upx
 WORKDIR /builder
