@@ -45,15 +45,6 @@ CREATE INDEX IF NOT EXISTS idx_price_final ON games(price_final);
 CREATE INDEX IF NOT EXISTS idx_reviews_count ON games(reviews_count);
 CLUSTER games USING idx_reviews_count;
 
--- Remember when last run was executed
-CREATE TABLE IF NOT EXISTS last_run (
-    -- just for usage with ON CONFLICT to overwite it.
-    -- table should have only single record to track last run time
-    onerow_id BOOL PRIMARY KEY DEFAULT true,
-    ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
-    CONSTRAINT onerow_uni CHECK (onerow_id)
-);
-
 -- Store reviews for all games
 CREATE TABLE IF NOT EXISTS reviews (
     id VARCHAR(255) PRIMARY KEY,
@@ -80,18 +71,6 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 
 CREATE INDEX idx_review_date ON reviews (review_date);
-CREATE INDEX idx_downvotes ON reviews (downvotes);
-CREATE INDEX idx_upvotes ON reviews (upvotes);
-
--- Remember execution time of each run with count of
--- fetched games and pages
-CREATE TABLE IF NOT EXISTS run (
-    id SERIAL PRIMARY KEY,
-    games INT NOT NULL,
-    pages INT NOT NULL,
-    start_ts TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    end_ts   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
 
 CREATE TABLE IF NOT EXISTS language_codes_to_names (
     code VARCHAR(10) PRIMARY KEY,
@@ -210,22 +189,6 @@ INSERT INTO language_codes_to_names (code, name) VALUES
 ('bs-Cyrl', 'Bosnian (Cyrillic)'),
 ('bs-Latn', 'Bosnian (Latin)'),
 ('sm', 'Samoan');
-
-
--- Create a trigger function to maintain the fixed size of the run table.
--- Keep only 100 most recent runs
-CREATE OR REPLACE FUNCTION maintain_queue_size()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Remove the oldest elements if the queue size exceeds 100
-    IF (SELECT COUNT(*) FROM run) > 100 THEN
-        DELETE FROM run
-        WHERE id IN (SELECT id FROM run ORDER BY start_ts LIMIT (SELECT COUNT(*) - 100 FROM run));
-    END IF;
-
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
 
 
 -- Create a materialized view for better performance with periodic updates
@@ -402,25 +365,3 @@ SELECT
 
     now() AS view_refresh_time
 ;
--- Create an index on the materialized view for faster queries
-CREATE UNIQUE INDEX ON game_statistics (view_refresh_time);
-
--- Create a trigger function to refresh the view when relevant tables change
-CREATE OR REPLACE FUNCTION trigger_refresh_game_statistics()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Use pg_notify to signal that statistics should be refreshed
-    -- This avoids refreshing immediately after every change
-    PERFORM pg_notify('refresh_statistics', 'true');
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create triggers on both tables
-CREATE or replace TRIGGER refresh_stats_games
-AFTER INSERT OR UPDATE OR DELETE ON games
-FOR EACH STATEMENT EXECUTE FUNCTION trigger_refresh_game_statistics();
-
-create or replace  TRIGGER refresh_stats_reviews
-AFTER INSERT OR UPDATE OR DELETE ON reviews
-FOR EACH STATEMENT EXECUTE FUNCTION trigger_refresh_game_statistics();
